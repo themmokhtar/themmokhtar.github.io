@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:guide x="21.223" y="425.718" angle="0"/>
+    <bx:guide x="-0.624" y="-0.625" angle="90"/>
+  </defs>
+  <ellipse style="fill: #1c1a2a;" cx="250" cy="250" rx="250" ry="250"/>
+  <ellipse style="fill: #94eebc;" cx="250" cy="250" rx="145" ry="145"/>
+</svg>

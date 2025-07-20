@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+
+
+<title>Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans</title>
+<meta name="title" content="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans">
+<meta name="description" content="This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9. Table of Contents Backstory Finding baseband vulnerabilities is easy Can we make it disclose more information? Just emulate it, they said. It’ll be easy, they said....">
+<meta name="og:url" content="https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html">
+<meta name="og:title" content="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans">
+<meta name="og:description" content="This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9. Table of Contents Backstory Finding baseband vulnerabilities is easy Can we make it disclose more information? Just emulate it, they said. It’ll be easy, they said....">
+
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/uncon/MesloLGSNF-web-fonts/stylesheet.css" />
+
+<link href="/assets/css/main.css?version=1.0.1" rel="stylesheet" type="text/css">
+
+<script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+    tex2jax: {
+        inlineMath: [['$','$'], ['\\(','\\)']],
+        processEscapes: true
+    }
+    });
+</script>
+
+<script type="module" src="/assets/js/mermaid.js?version=1.0.1"></script>
+
+    <link rel="shortcut icon" type="image/png" href="/favicon.svg" >
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans | themmokhtar</title>
+<meta name="generator" content="Jekyll v3.9.3" />
+<meta property="og:title" content="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans" />
+<meta name="author" content="themmokhtar" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9." />
+<meta property="og:description" content="This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9." />
+<link rel="canonical" href="https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html" />
+<meta property="og:url" content="https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html" />
+<meta property="og:site_name" content="themmokhtar" />
+<meta property="og:image" content="https://themmokhtar.github.io/assets/images/reverse-engineering/2025/07/20/google_entropy.png" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2025-07-20T00:00:00+02:00" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta property="twitter:image" content="https://themmokhtar.github.io/assets/images/reverse-engineering/2025/07/20/google_entropy.png" />
+<meta property="twitter:title" content="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"themmokhtar"},"dateModified":"2025-07-20T00:00:00+02:00","datePublished":"2025-07-20T00:00:00+02:00","description":"This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9.","headline":"Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans","image":"https://themmokhtar.github.io/assets/images/reverse-engineering/2025/07/20/google_entropy.png","mainEntityOfPage":{"@type":"WebPage","@id":"https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html"},"url":"https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body>
+<div class="layout">
+<div class="layout-content">
+    <header>
+        <div class="site-title"><a href="/">themmokhtar</a></div>
+        
+        <div class="menu-button">#</div>
+        
+    </header>
+    <main>
+    
+
+
+
+
+
+<div class="command">
+    <nav class="path">
+<a href="/" class="path-item">~</a>/<a href="/categories#reverse-engineering" class="path-item">reverse-engineering</a>
+</nav>
+
+    <div class="seperator"> ❯ </div>
+    <div class="text">
+        cat 2025-07-20-shannon-baseband:-pixel-9-reverse-engineering-shenanigans.md
+    </div>
+    <div class="comment">
+        
+    </div>
+</div>
+
+
+
+
+<article class="post">
+<a class="post-title" href="/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html"><h1 id="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans">Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans</h1></a>
+<hr/>
+
+<span class="published" title="2025-07-20 00:00:00 +0200">2025-07-20</span>
+<p style="height: 1.5rem;">&ZeroWidthSpace;</p>
+<p>This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9.</p>
+
+<h1 id="table-of-contents">Table of Contents</h1>
+
+<ul>
+  <li><a href="#backstory">Backstory</a>
+    <ul>
+      <li><a href="#finding-baseband-vulnerabilities-is-easy">Finding baseband vulnerabilities is <em>easy</em></a></li>
+      <li><a href="#can-we-make-it-disclose-more-information">Can we make it disclose more information?</a></li>
+      <li><a href="#just-emulate-it-they-said-itll-be-easy-they-said">Just emulate it, they said. It’ll be easy, they said.</a></li>
+      <li><a href="#the-severe-lack-of-public-research">The severe lack of public research</a></li>
+      <li><a href="#the-pickle">The pickle</a></li>
+    </ul>
+  </li>
+  <li><a href="#reversing-with-style">Reversing with style</a>
+    <ul>
+      <li><a href="#the-mpu-table-format">The MPU table format</a></li>
+      <li><a href="#scatterload-format">Scatterload format</a></li>
+      <li><a href="#task-control-block-format">Task control block format</a></li>
+      <li><a href="#extracting-the-modembin-from-a-pixel-radioimg">Extracting the <code class="language-plaintext highlighter-rouge">modem.bin</code> from a Pixel <code class="language-plaintext highlighter-rouge">radio.img</code></a>
+        <ul>
+          <li><a href="#unpacking-the-radioimg">Unpacking the <code class="language-plaintext highlighter-rouge">radio.img</code></a></li>
+          <li><a href="#unpacking-the-modemimg">Unpacking the <code class="language-plaintext highlighter-rouge">modem.img</code></a></li>
+          <li><a href="#unpacking-the-modemext4">Unpacking the <code class="language-plaintext highlighter-rouge">modem.ext4</code></a></li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li><a href="#pixel-9-baseband-updates">Pixel 9 baseband updates</a>
+    <ul>
+      <li><a href="#headers">Headers</a></li>
+      <li><a href="#entropy">Entropy</a></li>
+    </ul>
+  </li>
+  <li><a href="#closing-note">Closing note</a></li>
+  <li><a href="#references">References</a></li>
+</ul>
+
+<h1 id="backstory">Backstory</h1>
+<p>My way to start any security research topic is to go through previous research. I believe the most important research on the Shannon Baseband is, in no particular order:</p>
+<ul>
+  <li><a href="https://www.youtube.com/watch?v=o280NiZjNu8">Breaking Band</a> [<a href="#references">1</a>] by Nico Golde and Daniel Komaromy</li>
+  <li><a href="https://www.youtube.com/watch?v=6bpxrfB9ioo">A walk with Shannon</a> [<a href="#references">2</a>] by Amat Cama</li>
+  <li><a href="https://www.youtube.com/watch?v=wkWUU8820ro">Emulating Samsung’s Baseband for Security Testing</a> [<a href="#references">3</a>] by Grant Hernandez and Marius Muench</li>
+</ul>
+
+<p>These talks helped shape the current state of the Shannon Baseband research field.</p>
+
+<h2 id="finding-baseband-vulnerabilities-is-easy">Finding baseband vulnerabilities is <em>easy</em></h2>
+
+<p>Before you come at me with pitchforks, let me explain. Crashing the baseband is surprisingly easy — so easy, in fact, that I did it by accident. I won’t go into specifics about the subsystem I was working with, but I will say that it was one I had no prior knowledge of. I relied on publicly available ETSI and 3GPP specifications to understand the message format, connected everything accordingly, and started experimenting with various messages just to observe how the system would respond.</p>
+
+<p>I wasn’t even trying to crash it, but I did. Not only that, but the crash is also reproducible and worked on three different devices (two Google models and one Samsung model.) Can you imagine how many crashes you can get if you actually try?</p>
+
+<p>This isn’t just my experience either. In Grant Hernandez’s talk, he said:</p>
+<blockquote>
+  <p>“We found crashes, which is really cool, but then we now realized the main issue with this approach [is that] we couldn’t understand why they had crashed. We were just flipping bits randomly. Not to mention that the phones themselves weren’t giving us the required debugging output to actually figure out what was happening, let alone the impact of what we just found.”</p>
+
+  <p>- Grant Hernandez</p>
+</blockquote>
+
+<p>Let us also note that baseband crash behavior is different from vendor to vendor. On Google devices, the baseband crashes and restarts without the Android OS rebooting. This results in a minidump being generated in logcat. Still nowhere near enough information. On Samsung devices, the baseband crashes and shows a crash screen to allow for dumping. None of these are enough to understand the crash, but they are enough to know that the baseband is vulnerable.</p>
+
+<h2 id="can-we-make-it-disclose-more-information">Can we make it disclose more information?</h2>
+
+<p>I investigated the possibility of making the baseband disclose more information at runtime. These are the two main things I investigated in that regard:</p>
+<ol>
+  <li>Reverse and manipulate the <code class="language-plaintext highlighter-rouge">cbd</code> user-space task (<code class="language-plaintext highlighter-rouge">c</code>ellular <code class="language-plaintext highlighter-rouge">b</code>aseband <code class="language-plaintext highlighter-rouge">d</code>aemon) to make it log more information or provide more information than it normally does.</li>
+  <li>Reverse and manipulate the <code class="language-plaintext highlighter-rouge">cpif</code> kernel-space driver (<code class="language-plaintext highlighter-rouge">c</code>ellular <code class="language-plaintext highlighter-rouge">p</code>rocessor <code class="language-plaintext highlighter-rouge">i</code>nter<code class="language-plaintext highlighter-rouge">f</code>ace) to make it log more information</li>
+</ol>
+
+<p>For the <code class="language-plaintext highlighter-rouge">cbd</code> task, through some preliminary reversing, it simply seems like that task does not actually have a lot of information to provide. I recompiled a modified implementation of the <code class="language-plaintext highlighter-rouge">cpif</code> driver to understand it more and see if I can make it log more information</p>
+
+<p>By far, the most interesting thing to play around with is the <code class="language-plaintext highlighter-rouge">CONFIG_CP_BTL</code> kernel configuration. BTL is the format used by the baseband for logging. It has already been <a href="https://github.com/grant-h/ShannonBaseband/tree/master/reversing/btl">reverse engineered by Grant and his team</a> [<a href="#references">4</a>]. I did enable it, but after some time spent there, it seems that something needs to be modified on the baseband side to make it actually send the data over to the application processor.</p>
+
+<p>Of course, I’m unsure of that. To know that for sure, I need to reverse the baseband more.</p>
+
+<h2 id="just-emulate-it-they-said-itll-be-easy-they-said">Just emulate it, they said. It’ll be easy, they said.</h2>
+
+<p>FirmWire is a baseband emulation tool. By all means, it is a great tool, but it is not a silver bullet. For my specific use case, it isn’t very helpful. This is for two reasons. The first is that it simply does not work on the Google Pixel 9 modems, which is my target.</p>
+
+<p>The second, more important reason is how FirmWire works. By definition, FirmWire is not actually connected to any real hardware. To combat this, FirmWire offers a clever workaround: injecting a custom baseband task that communicates with other tasks through the queues. I believe this is one of the best ways to go about this problem. However, to understand the data format sent to the queues, reverse engineering is still required.</p>
+
+<p>Simply put, we need one of the following to understand and exploit baseband vulnerabilities:</p>
+<ul>
+  <li>Debugging (requires reversing)</li>
+  <li>Emulation (requires reversing)</li>
+  <li>Reversing (obviously)</li>
+</ul>
+
+<p>Since I’m lazy, I’ll stick to reversing. Whatever gets the job done faster is better.</p>
+
+<h2 id="the-severe-lack-of-public-research">The severe lack of public research</h2>
+
+<p>A big issue regarding (Shannon) baseband research is that changes in the baseband are faster than public research. This is not because changes in the baseband are fast, but because public research is very lacking, to say the least.</p>
+
+<p>For example, in Grant’s talk, he said:</p>
+<blockquote>
+  <p>“There had been [a] talk that actually [mentions] these files were encrypted.
+We didn’t see that. None of our images were encrypted.” - Grant Hernandez</p>
+</blockquote>
+
+<p>He is talking about the Breaking Band talk, and I see where he is coming from. The publicly documented methods for dumping baseband images and logs no longer seem applicable. For context, the Breaking Band talk was given in 2016, while Grant’s talk was given in 2021. Imagine the most recent public research you can find on a topic being from five years ago.</p>
+
+<p>I faced similar problems using the <a href="https://github.com/grant-h/ShannonBaseband/tree/master/reversing/ghidra">reversing scripts</a> [<a href="#references">5</a>] Grant wrote, which in the end caused me to write my own reversing tool.</p>
+
+<h2 id="the-pickle">The pickle</h2>
+
+<p>Well, I already have crashes, but it is virtually impossible to understand and exploit these crashes without reversing. Without effective reverse engineering, even basic vulnerability analysis becomes a guessing game.</p>
+
+<p>Emulation is not a bulletproof solution either, because to reproduce the crashes in an emulated baseband, you need to reverse engineer it enough to know:</p>
+<ul>
+  <li>Which task to target</li>
+  <li>Which queue to write to</li>
+  <li>The exact format in the queue (which might or might not be different from the data sent over the air)</li>
+</ul>
+
+<p>A lot of previous research resorted to “dumping the baseband memory through dial-up commands.” This did not work at all from my experience. On Samsung devices, the dumps did not contain any baseband-related memory or logs. On Google Pixel devices, the dial-up commands are not even supported anymore.</p>
+
+<h1 id="reversing-with-style">Reversing with style</h1>
+
+<p>Grant’s reversing scripts are an amazing starting point, but they are quite old now (supports only old Ghidra versions,) and more importantly, they do not work completely well on my target devices.</p>
+
+<p>On the Galaxy S20FE baseband image, the MPU table (more on that later) was not detected correctly. On the Pixel 9, nothing was detected. Not even the CRCs matched. Worse yet, even after the baseband of a supported phone was loaded, it can take a while for someone who is searching for the first time to find the task list and task entries.</p>
+
+<p>To solve this, I wrote a python script that takes inspiration from the <a href="https://github.com/marin-m/vmlinux-to-elf"><code class="language-plaintext highlighter-rouge">vmlinux-to-elf</code> tool by marin-m</a>. [<a href="#references">6</a>] This is by far, one of the most long-lasting and well-tested reversing tools I have ever seen. Therefore, I wrote a similar tool for the Shannon Baseband, called <a href="https://github.com/themmokhtar/radio-to-elf"><code class="language-plaintext highlighter-rouge">radio-to-elf</code></a>.  [<a href="#references">7</a>]</p>
+
+<p><code class="language-plaintext highlighter-rouge">radio-to-elf</code> is a Python script that converts a baseband image into an ELF file suitable for any reversing tool. It does this by:</p>
+<ul>
+  <li>Extracting a <code class="language-plaintext highlighter-rouge">modem.bin</code> from a <code class="language-plaintext highlighter-rouge">radio.img</code> (if applicable)</li>
+  <li>Parsing the TOC header and verifying the CRCs</li>
+  <li>Extracting and parsing the MPU table</li>
+  <li>Extracting and parsing the scatterload table</li>
+  <li>Extracting the task list and task entries</li>
+  <li>Turning the baseband image into a symbolized ELF file for reversing</li>
+</ul>
+
+<p>The main benefit of this approach is that now only one type of compatibility mismatch can happen, which is regarding the baseband image format. This is much better than having to deal with compatibility issues regarding both the baseband image format and the reversing tool(s).</p>
+
+<p>One extra feature of <code class="language-plaintext highlighter-rouge">radio-to-elf</code> is that it can also extract the <code class="language-plaintext highlighter-rouge">modem.bin</code> from a google pixel <code class="language-plaintext highlighter-rouge">radio.img</code> file. This has never been done before. Even in the talk by Google Project Zero <a href="https://www.youtube.com/watch?v=quw8SnmMWg4">How to Hack Shannon Baseband (from a Phone)</a> [<a href="#references">8</a>] given by Natalie Silvanovich, the baseband was from memory using dial-up commands which don’t work anymore.</p>
+
+<p>Enough ranting. Time to check out the baseband format.</p>
+
+<h2 id="the-mpu-table-format">The MPU table format</h2>
+
+<p>The MPU table is a structure in Shannon Baseband images that outlines the memory access permissions for different regions of memory. This is extremely useful for distinguishing code from data during reversing and exploitation.</p>
+
+<p>This is a dump of the first 0x100 bytes of an example MPU table:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">000000</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 1e 00 00 00 08 00 00 00 ................</span>
+<span class="na">000010</span><span class="pi">:</span> <span class="s">00 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000020</span><span class="pi">:</span> <span class="s">00 00 00 00 01 00 00 00 01 00 00 00 00 00 20 40 ...............@</span>
+<span class="na">000030</span><span class="pi">:</span> <span class="s">28 00 00 00 08 00 00 00 00 06 00 00 00 10 00 00 (...............</span>
+<span class="na">000040</span><span class="pi">:</span> <span class="s">00 00 00 00 02 00 00 00 01 00 00 00 01 00 00 00 ................</span>
+<span class="na">000050</span><span class="pi">:</span> <span class="s">02 00 00 00 00 00 40 40 28 00 00 00 08 00 00 00 ......@@(.......</span>
+<span class="na">000060</span><span class="pi">:</span> <span class="s">00 06 00 00 00 10 00 00 00 00 00 00 02 00 00 00 ................</span>
+<span class="na">000070</span><span class="pi">:</span> <span class="s">01 00 00 00 01 00 00 00 03 00 00 00 00 00 c0 49 ...............I</span>
+<span class="na">000080</span><span class="pi">:</span> <span class="s">26 00 00 00 08 00 00 00 00 03 00 00 00 10 00 00 &amp;...............</span>
+<span class="na">000090</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 ................</span>
+<span class="na">0000a0</span><span class="pi">:</span> <span class="s">04 00 00 00 00 00 d0 49 26 00 00 00 08 00 00 00 .......I&amp;.......</span>
+<span class="na">0000b0</span><span class="pi">:</span> <span class="s">00 06 00 00 00 00 00 00 00 00 00 00 02 00 00 00 ................</span>
+<span class="na">0000c0</span><span class="pi">:</span> <span class="s">01 00 00 00 01 00 00 00 05 00 00 00 00 00 e0 49 ...............I</span>
+<span class="na">0000d0</span><span class="pi">:</span> <span class="s">26 00 00 00 08 00 00 00 00 06 00 00 00 00 00 00 &amp;...............</span>
+<span class="na">0000e0</span><span class="pi">:</span> <span class="s">00 00 00 00 02 00 00 00 01 00 00 00 01 00 00 00 ................</span>
+<span class="na">0000f0</span><span class="pi">:</span> <span class="s">06 00 00 00 00 00 f0 49 26 00 00 00 08 00 00 00 .......I&amp;.......</span>
+</code></pre></div></div>
+
+<p>Here is a better breakdown of the first MPU slot:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th><strong>Field</strong></th>
+      <th><strong>Range</strong></th>
+      <th><strong>Value</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Slot ID</td>
+      <td><code class="language-plaintext highlighter-rouge">0x0</code>-<code class="language-plaintext highlighter-rouge">0x3</code></td>
+      <td><code class="language-plaintext highlighter-rouge">0x0</code></td>
+    </tr>
+    <tr>
+      <td>Base Address</td>
+      <td><code class="language-plaintext highlighter-rouge">0x4</code>-<code class="language-plaintext highlighter-rouge">0x8</code></td>
+      <td><code class="language-plaintext highlighter-rouge">0x00000000</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">MPU_RASR</code></td>
+      <td><code class="language-plaintext highlighter-rouge">0x8</code></td>
+      <td><code class="language-plaintext highlighter-rouge">0x0608001f</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p><code class="language-plaintext highlighter-rouge">MPU_RASR</code> is short for “Memory Protection Unit Region Attribute and Size Register.” It is a register that defines the attributes and size of a memory region in the MPU. The bits in this register are used to control access permissions, cacheability, and other attributes of the memory region.</p>
+
+<p>How did we calculate it? If we assume the MPU slot to be a <code class="language-plaintext highlighter-rouge">uint32_t items[10];</code>, then <code class="language-plaintext highlighter-rouge">MPU_RASR = ((items[2] | items[9]) | (items[3] | items[4] | items[5] | items[6] | items[7] | items[8]) &lt;&lt; 16)</code>. Don’t ask me why it is formatted like that because I have no idea. This is just how it is.</p>
+
+<p>With the help of the <a href="https://developer.arm.com/documentation/ddi0419/c/System-Level-Architecture/System-Address-Map/Protected-Memory-System-Architecture--PMSAv6/MPU-Region-Attribute-and-Size-Register--MPU-RASR?lang=en">ARM developer documentation</a>, [<a href="#references">9</a>] the <code class="language-plaintext highlighter-rouge">MPU_RASR</code> register is structured as follows:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Bits</th>
+      <th>Name</th>
+      <th>Function</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[31:16]</code></td>
+      <td>ATTRS</td>
+      <td>The MPU Region Attribute field. This field has the following subfields, defined in <em>Region attribute control</em>: <br /> - <strong>XN</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[28]</code>)<br /> - <strong>AP[2:0]</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[26:24]</code>)<br /> - <strong>TEX[2:0]</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[21:19]</code>)<br /> - <strong>S</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[18]</code>)<br /> - <strong>C</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[17]</code>)<br /> - <strong>B</strong> (<code class="language-plaintext highlighter-rouge">MPU_RASR[16]</code>)</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[15:8]</code></td>
+      <td>SRD</td>
+      <td>Subregion Disable. For regions of 256 bytes or larger, each bit of this field controls whether one of the eight equal subregions is enabled. See <em>Memory region subregions</em>: <br /> - <code class="language-plaintext highlighter-rouge">0</code>: subregion enabled <br /> - <code class="language-plaintext highlighter-rouge">1</code>: subregion disabled</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[7:6]</code></td>
+      <td>-</td>
+      <td>Reserved</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[5:1]</code></td>
+      <td>SIZE</td>
+      <td>Indicates the region size.<br />The permitted values for SIZE are <code class="language-plaintext highlighter-rouge">7-31</code>, i.e., <code class="language-plaintext highlighter-rouge">0b00111</code>–<code class="language-plaintext highlighter-rouge">0b11111</code>.<br />The associated region size, in bytes, is <code class="language-plaintext highlighter-rouge">2^(SIZE+1)</code>.<br />SIZE values less than <code class="language-plaintext highlighter-rouge">7</code> are reserved, as the smallest supported region size is <code class="language-plaintext highlighter-rouge">256</code> bytes.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">[0]</code></td>
+      <td>ENABLE</td>
+      <td>Enables this region: <br /> - <code class="language-plaintext highlighter-rouge">0</code>: When the MPU is enabled, this region is disabled. <br /> - <code class="language-plaintext highlighter-rouge">1</code>: When the MPU is enabled, this region is enabled. <br /><br />Enabling a region has no effect unless the <code class="language-plaintext highlighter-rouge">MPU_CTRL.ENABLE</code> bit is also set to <code class="language-plaintext highlighter-rouge">1</code>, to enable the MPU.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Grant’s pattern matching did not work for me on newer basebands, so I used a different pattern to match the MPU table. The pattern I used is:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="sa">b</span><span class="s">""</span><span class="p">.</span><span class="n">join</span><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="c1"># the entry slot ID of x
+</span>        <span class="n">struct</span><span class="p">.</span><span class="n">pack</span><span class="p">(</span><span class="s">"&lt;I"</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="o">+</span>
+        <span class="c1"># a start address of zero for the first slot, and any address for the rest
+</span>        <span class="p">(</span><span class="sa">b</span><span class="s">"[</span><span class="se">\\</span><span class="s">x00]{4}"</span> <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="sa">b</span><span class="s">".{4}"</span><span class="p">)</span> <span class="o">+</span>
+        <span class="c1"># 7 arbitrary 4-byte values
+</span>        <span class="sa">b</span><span class="s">".{28}"</span>
+        <span class="c1"># the enable boolean of 1
+</span>        <span class="sa">b</span><span class="s">"</span><span class="se">\\</span><span class="s">x01</span><span class="se">\\</span><span class="s">x00</span><span class="se">\\</span><span class="s">x00</span><span class="se">\\</span><span class="s">x00"</span>
+        <span class="c1"># For 4 slots (this could be adjusted)
+</span>        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div></div>
+<p>The main difference is that Grant’s pattern used a fixed known address for the second slot, while this pattern doesn’t.</p>
+
+<h2 id="scatterload-format">Scatterload format</h2>
+
+<p>Scatterload is a link-time loading mechanism used in Shannon Baseband images. It enables fine-grained control over how chunks of memory are loaded. Unlike the MPU table, scatterloading operates at byte-level granularity rather than page-level. As a side-note, scatterloading functions are super-useful ROP gadgets.</p>
+
+<p>There are multiple versions of scatterloading functions, but the structure is one and the same. Here is an example dump of a scatterload table:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">000000</span><span class="pi">:</span> <span class="s">20 24 98 42 00 00 00 00 00 00 00 00 80 ae 8d 42 .$.B...........B</span>
+<span class="na">000010</span><span class="pi">:</span> <span class="s">00 00 00 00 20 24 98 42 00 00 00 00 80 ae 8d 42 .....$.B.......B</span>
+<span class="na">000020</span><span class="pi">:</span> <span class="s">20 34 98 42 20 34 98 42 f4 8e 23 00 1c af 8d 42 .4.B.4.B..#....B</span>
+<span class="na">000030</span><span class="pi">:</span> <span class="s">e0 26 88 43 40 00 d0 47 50 49 0c 00 1c af 8d 42 .&amp;.C@..GPI.....B</span>
+<span class="na">000040</span><span class="pi">:</span> <span class="s">30 70 94 43 90 49 dc 47 30 89 22 00 a8 ae 8d 42 0p.C.I.G0."....B</span>
+<span class="na">000050</span><span class="pi">:</span> <span class="s">c8 e1 a1 43 00 00 00 48 00 00 10 01 a8 ae 8d 42 ...C...H.......B</span>
+<span class="na">000060</span><span class="pi">:</span> <span class="s">ec 03 a4 43 00 00 c0 49 30 30 00 00 1c af 8d 42 ...C...I00.....B</span>
+<span class="na">000070</span><span class="pi">:</span> <span class="s">1c 34 a4 43 00 00 d0 49 f4 ae 0b 00 1c af 8d 42 .4.C...I.......B</span>
+<span class="na">000080</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 00 b0 4a fc 00 00 00 1c af 8d 42 ...C...J.......B</span>
+<span class="na">000090</span><span class="pi">:</span> <span class="s">0c e4 af 43 00 00 d0 4c 24 43 01 00 a8 ae 8d 42 ...C...L$C.....B</span>
+<span class="na">0000a0</span><span class="pi">:</span> <span class="s">98 e6 af 43 00 00 50 4c 20 05 53 00 a8 ae 8d 42 ...C..PL..S....B</span>
+<span class="na">0000b0</span><span class="pi">:</span> <span class="s">e8 64 c0 43 00 00 80 52 00 00 00 04 a8 ae 8d 42 .d.C...R.......B</span>
+<span class="na">0000c0</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 00 70 4a a4 00 00 00 44 af 8d 42 ...C..pJ....D..B</span>
+<span class="na">0000d0</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 01 70 4a b4 02 00 00 44 af 8d 42 ...C..pJ....D..B</span>
+<span class="na">0000e0</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 09 70 4a 14 00 00 00 44 af 8d 42 ...C..pJ....D..B</span>
+<span class="na">0000f0</span><span class="pi">:</span> <span class="s">10 e3 af 43 80 09 70 4a 8c 24 00 00 44 af 8d 42 ...C..pJ.$..D..B</span>
+<span class="na">000100</span><span class="pi">:</span> <span class="s">10 e3 af 43 80 39 70 4a 84 06 00 00 44 af 8d 42 ...C.9pJ....D..B</span>
+<span class="na">000110</span><span class="pi">:</span> <span class="s">10 e3 af 43 80 41 70 4a 04 00 00 00 44 af 8d 42 ...C.ApJ....D..B</span>
+<span class="na">000120</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 42 70 4a 00 07 00 00 44 af 8d 42 ...C.BpJ....D..B</span>
+<span class="na">000130</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 4a 70 4a 6c 2f 00 00 44 af 8d 42 ...C.JpJl/..D..B</span>
+<span class="na">000140</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 0a 71 4a 60 9a 01 00 44 af 8d 42 ...C..qJ`...D..B</span>
+<span class="na">000150</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 aa 72 4a 14 23 01 00 44 af 8d 42 ...C..rJ.#..D..B</span>
+<span class="na">000160</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 aa 75 4a fc c2 20 00 44 af 8d 42 ...C..uJ....D..B</span>
+<span class="na">000170</span><span class="pi">:</span> <span class="s">10 e3 af 43 00 00 98 4a 48 64 17 00 44 af 8d 42 ...C...JHd..D..B</span>
+<span class="na">000180</span><span class="pi">:</span> <span class="s">0c e4 af 43 fc 00 b0 4a dc c9 84 00 44 af 8d 42 ...C...J....D..B</span>
+<span class="na">000190</span><span class="pi">:</span> <span class="s">0c e4 af 43 00 00 40 4b a0 45 04 01 44 af 8d 42 ...C..@K.E..D..B</span>
+<span class="na">0001a0</span><span class="pi">:</span> <span class="s">98 e6 af 43 24 43 d1 4c 1c 99 2a 00 44 af 8d 42 ...C$C.L..*.D..B</span>
+<span class="na">0001b0</span><span class="pi">:</span> <span class="s">4c 8d b0 43 20 05 a3 4c 00 ef 0c 00 44 af 8d 42 L..C...L....D..B</span>
+<span class="na">0001c0</span><span class="pi">:</span> <span class="s">4c 8d b0 43 00 10 70 4d 20 34 00 00 44 af 8d 42 L..C..pM.4..D..B</span>
+<span class="na">0001d0</span><span class="pi">:</span> <span class="s">4c 8d b0 43 00 80 71 4d 98 09 00 00 44 af 8d 42 L..C..qM....D..B</span>
+<span class="na">0001e0</span><span class="pi">:</span> <span class="s">4c 8d b0 43 00 90 71 4d c8 19 00 00 44 af 8d 42 L..C..qM....D..B</span>
+<span class="na">0001f0</span><span class="pi">:</span> <span class="s">4c 8d b0 43 00 c0 71 4d 58 00 00 00 44 af 8d 42 L..C..qMX...D..B</span>
+<span class="na">000200</span><span class="pi">:</span> <span class="s">4c 8d b0 43 00 00 72 4d a8 ad 04 00 44 af 8d 42 L..C..rM....D..B</span>
+</code></pre></div></div>
+
+<p>Instead of just talking about how to reach this table from a scatterload function, here is an outline of the references and the contents of the scatterload table:</p>
+
+<p><img src="/assets/images/reverse-engineering/2025/07/20/scatterload.png" alt="Scatterload Connection Structure" /></p>
+
+<p>Note that each element in the scatterload table is an unsigned 32-bit integer, and an entry contains only 4 elements, making this structure quite straightforward. Basically all the scatterload function does is go through the list of function pointers and call them with the specified arguments.</p>
+
+<h2 id="task-control-block-format">Task control block format</h2>
+
+<p>None of the reversing tools currently provide a way to have a list of tasks and be able to start reversing an appropriate task accordingly. It took me a bit to find the tasks that are relevant to the subsystem I was interested in. To save myself and future researchers this hassle, I also added support to automatically extract the task list and task entries from the baseband image.</p>
+
+<p>The reason this makes such a difference is because now any resource referencing a vulnerability can simply showcase the task name and the call stack leading to the vulnerability, making it much easier for anyone to go through the code path and understand it.</p>
+
+<p>Here is how that is structured:</p>
+
+<p><img src="/assets/images/reverse-engineering/2025/07/20/task_entries.png" alt="Task TCBs structure" /></p>
+
+<p>In order to find the task entries, we simply:</p>
+<ul>
+  <li>Search for the task names</li>
+  <li>Calculate their runtime addresses</li>
+  <li>Search for those addresses in the baseband image to find the name pointers</li>
+  <li>Get the task entries’ addresses by offsetting the name pointers</li>
+</ul>
+
+<p>All of those addresses are then symbolized in the generated ELF file, making it easy to find them in Ghidra or any other reversing tool.</p>
+
+<h2 id="extracting-the-modembin-from-a-pixel-radioimg">Extracting the <code class="language-plaintext highlighter-rouge">modem.bin</code> from a Pixel <code class="language-plaintext highlighter-rouge">radio.img</code></h2>
+
+<p>Before I go into how it’s done, let me explain why I did it.</p>
+
+<p>First, I extracted the <code class="language-plaintext highlighter-rouge">modem.bin</code> from a rooted Pixel 9 device. This <code class="language-plaintext highlighter-rouge">modem.bin</code> didn’t match any modem images I’d seen before. This led me to believe the image was corrupt due to how different it appeared. Here are the differences:</p>
+<ul>
+  <li>The TOC header’s CRCs did not match the expected values</li>
+  <li>The MPU table was nowhere to be found</li>
+  <li>The scatterload table was nowhere to be found</li>
+  <li>The task names were present, but the TCBs were missing</li>
+</ul>
+
+<p>That was enough to convince me the <code class="language-plaintext highlighter-rouge">modem.bin</code> was incomplete or malformed — and that’s how we ended up here. But I digress.</p>
+
+<p>The extraction is a three-step process:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th><strong>In</strong></th>
+      <th><strong>Format</strong></th>
+      <th><strong>The Catch</strong></th>
+      <th><strong>Out</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">radio.img</code></td>
+      <td>FastBootPacK</td>
+      <td>It uses FBPK version 1, not version 2</td>
+      <td><code class="language-plaintext highlighter-rouge">modem.img</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">modem.img</code></td>
+      <td><code class="language-plaintext highlighter-rouge">tar</code> Archive</td>
+      <td>The owner UID field is not standard format</td>
+      <td><code class="language-plaintext highlighter-rouge">modem.ext4</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">modem.ext4</code></td>
+      <td><code class="language-plaintext highlighter-rouge">ext4</code> Partition</td>
+      <td>The superblock is not at offset 1024, it is at the start of the file</td>
+      <td><code class="language-plaintext highlighter-rouge">modem.bin</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>This is different from previous baseband images, where the extraction method was much simpler as outlined by <a href="https://github.com/alexander-pick/shannon_modem_loader/wiki/Extract-Google-Pixel-Modem-Images-%28FBPK---Fastboot-Package-Image-Format%29">Alexander Pick</a>. [<a href="#references">10</a>] There was no tar middle step, and the <code class="language-plaintext highlighter-rouge">modem.img</code> could be mounted directly as an <code class="language-plaintext highlighter-rouge">ext4</code> partition.</p>
+
+<p>With every single packing step, there was always some deviation from the expected format. This was, of course, a pain to figure out.</p>
+
+<h3 id="unpacking-the-radioimg">Unpacking the <code class="language-plaintext highlighter-rouge">radio.img</code></h3>
+
+<p>The first step is to extract the <code class="language-plaintext highlighter-rouge">modem.img</code> from the <code class="language-plaintext highlighter-rouge">radio.img</code>. The fastboot packing version is a bit different from the standard one, so we need to account for that. Here is an example dump of the first 0x100 bytes of a <code class="language-plaintext highlighter-rouge">radio.img</code> file:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">000000</span><span class="pi">:</span> <span class="s">46 42 50 4b 01 00 00 00 67 35 34 30 30 63 2d 32 FBPK....g5400c-2</span>
+<span class="na">000010</span><span class="pi">:</span> <span class="s">34 31 32 30 35 2d 32 35 30 31 32 37 2d 4d 2d 31 41205-250127-M-1</span>
+<span class="na">000020</span><span class="pi">:</span> <span class="s">32 39 37 31 37 31 36 00 00 00 00 00 00 00 00 00 2971716.........</span>
+<span class="na">000030</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000040</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 ................</span>
+<span class="na">000050</span><span class="pi">:</span> <span class="s">8c 10 6f 0b 01 00 00 00 6d 6f 64 65 6d 00 00 00 ..o.....modem...</span>
+<span class="na">000060</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000070</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 10 6f 0b ..............o.</span>
+<span class="na">000080</span><span class="pi">:</span> <span class="s">00 00 00 00 90 10 6f 0b c2 fb 94 db 67 35 34 30 ......o.....g540</span>
+<span class="na">000090</span><span class="pi">:</span> <span class="s">30 63 2d 32 34 31 32 30 35 2d 32 35 30 31 32 37 0c-241205-250127</span>
+<span class="na">0000a0</span><span class="pi">:</span> <span class="s">2d 42 2d 31 32 39 37 31 37 31 36 00 00 00 00 00 -B-12971716.....</span>
+<span class="na">0000b0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000c0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000d0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000e0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000f0</span><span class="pi">:</span> <span class="s">30 30 30 30 36 36 34 00 80 00 00 00 15 fe 9a b2 0000664.........</span>
+</code></pre></div></div>
+
+<p>The version number is right after the <code class="language-plaintext highlighter-rouge">FBPK</code> magic, at offset <code class="language-plaintext highlighter-rouge">0x4</code>. As outlined by Alexander Pick, the image can be unpacked using the <a href="https://gitlab.com/CalyxOS/scripts/-/commit/b9def06273d5c68bca195474ce8c59a0ecc396e5"><code class="language-plaintext highlighter-rouge">fbpacktool</code> provided by <code class="language-plaintext highlighter-rouge">CalyxOS</code></a>.  [<a href="#references">11</a>] This is an updated version of the original tool <a href="https://developers.google.com/android/binary_transparency/pixel_verification">provided by Google’s Android Binary Transparency project</a>.  [<a href="#references">12</a>]</p>
+
+<p>With all due respect, binary transparency my ass.</p>
+
+<h3 id="unpacking-the-modemimg">Unpacking the <code class="language-plaintext highlighter-rouge">modem.img</code></h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">modem.img</code> is a <code class="language-plaintext highlighter-rouge">tar</code> file, but it’s just slightly modified — enough to make you question if it is actually a normal <code class="language-plaintext highlighter-rouge">tar</code> file. Here is a hexdump of the first <code class="language-plaintext highlighter-rouge">0x200</code> bytes:</p>
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">000000</span><span class="pi">:</span> <span class="s">67 35 34 30 30 63 2d 32 34 31 32 30 35 2d 32 35 g5400c-241205-25</span>
+<span class="na">000010</span><span class="pi">:</span> <span class="s">30 31 32 37 2d 42 2d 31 32 39 37 31 37 31 36 00 0127-B-12971716.</span>
+<span class="na">000020</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000030</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000040</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000050</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000060</span><span class="pi">:</span> <span class="s">00 00 00 00 30 30 30 30 36 36 34 00 80 00 00 00 ....0000664.....</span>
+<span class="na">000070</span><span class="pi">:</span> <span class="s">15 fe 9a b2 30 30 31 31 36 31 30 00 30 30 30 30 ....0011610.0000</span>
+<span class="na">000080</span><span class="pi">:</span> <span class="s">30 30 30 30 30 30 30 00 31 34 37 34 35 37 34 36 </span><span class="m">0000000.14745746</span>
+<span class="na">000090</span><span class="pi">:</span> <span class="s">36 33 31 00 30 32 30 34 35 36 00 20 30 00 00 00 631.020456..0...</span>
+<span class="na">0000a0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000b0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000c0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000d0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000e0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000f0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000100</span><span class="pi">:</span> <span class="s">00 75 73 74 61 72 20 20 00 61 6e 64 72 6f 69 64 .ustar...android</span>
+<span class="na">000110</span><span class="pi">:</span> <span class="s">2d 62 75 69 6c 64 2d 61 6e 64 72 6f 69 64 2d 66 -build-android-f</span>
+<span class="na">000120</span><span class="pi">:</span> <span class="s">69 72 6d 77 61 72 65 2d 00 65 6e 67 00 00 00 00 irmware-.eng....</span>
+<span class="na">000130</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000140</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000150</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000160</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000170</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000180</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">000190</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001a0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001b0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001c0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001d0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001e0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0001f0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+</code></pre></div></div>
+
+<p>Fun fact, the extended <code class="language-plaintext highlighter-rouge">tar</code> file format magic <code class="language-plaintext highlighter-rouge">ustar</code> is at offset <code class="language-plaintext highlighter-rouge">0x101</code>, not at the beginning of the file. The main change is that the owner UID field at offset <code class="language-plaintext highlighter-rouge">0x6C</code> is not in the <a href="https://wiki.osdev.org/USTAR">standard</a> <a href="https://www.subspacefield.org/~vax/tar_format.html">format</a>.  [<a href="#references">13</a>][<a href="#references">14</a>] Weirdly enough, tar file header elements are strings of the octal representation of the value. The version in Pixel 9 phones, however, only breaks this rule for the owner UID field (not even for the group UID field.) Just the owner UID field. Like, why?</p>
+
+<p>Regardless, it can be extracted like a normal tar file.</p>
+
+<h3 id="unpacking-the-modemext4">Unpacking the <code class="language-plaintext highlighter-rouge">modem.ext4</code></h3>
+
+<p>This step took me the longest to figure out. The <code class="language-plaintext highlighter-rouge">modem.ext4</code> file is not a standard <code class="language-plaintext highlighter-rouge">ext4</code> partition. It is a modified <code class="language-plaintext highlighter-rouge">ext4</code> partition that has the superblock at the start of the file, not at offset <code class="language-plaintext highlighter-rouge">1024</code> as expected. This is why it was not recognized as an <code class="language-plaintext highlighter-rouge">ext4</code> partition using standard reversing tools like <code class="language-plaintext highlighter-rouge">file</code> or <code class="language-plaintext highlighter-rouge">binwalk</code>. Here is a hexdump of the first <code class="language-plaintext highlighter-rouge">0x100</code> bytes of the <code class="language-plaintext highlighter-rouge">modem.ext4</code> file:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">000000</span><span class="pi">:</span> <span class="s">00 28 00 00 f0 b6 00 00 00 00 00 00 ac 00 00 00 .(..............</span>
+<span class="na">000010</span><span class="pi">:</span> <span class="s">ac 27 00 00 00 00 00 00 02 00 00 00 02 00 00 00 .'..............</span>
+<span class="na">000020</span><span class="pi">:</span> <span class="s">00 80 00 00 00 80 00 00 00 14 00 00 00 00 00 00 ................</span>
+<span class="na">000030</span><span class="pi">:</span> <span class="s">99 cd 97 67 00 00 ff ff 53 ef 01 00 02 00 00 00 ...g....S.......</span>
+<span class="na">000040</span><span class="pi">:</span> <span class="s">98 cd 97 67 00 00 00 00 00 00 00 00 01 00 00 00 ...g............</span>
+<span class="na">000050</span><span class="pi">:</span> <span class="s">00 00 00 00 0b 00 00 00 80 00 00 00 20 00 00 00 ................</span>
+<span class="na">000060</span><span class="pi">:</span> <span class="s">42 02 00 00 31 00 00 00 de 68 65 bd 85 b5 44 2e B...1....he...D.</span>
+<span class="na">000070</span><span class="pi">:</span> <span class="s">88 76 d4 03 1e 65 d8 77 50 49 58 45 4c 4d 4f 44 .v...e.wPIXELMOD</span>
+<span class="na">000080</span><span class="pi">:</span> <span class="s">45 4d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EM..............</span>
+<span class="na">000090</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000a0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000b0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000c0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000d0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................</span>
+<span class="na">0000e0</span><span class="pi">:</span> <span class="s">00 00 00 00 00 00 00 00 00 00 00 00 f9 e6 31 5d ..............1]</span>
+<span class="na">0000f0</span><span class="pi">:</span> <span class="s">d7 34 42 48 83 91 26 38 df 68 da 44 01 00 00 00 .4BH..&amp;8.h.D....</span>
+</code></pre></div></div>
+
+<p>The magic of an ext4 superblock is <code class="language-plaintext highlighter-rouge">0xEF53</code>, <a href="https://docs.kernel.org/filesystems/ext4/globals.html#super-block">which is at offset <code class="language-plaintext highlighter-rouge">0x38</code></a> [<a href="#references">15</a>] from the start of the superblock. In a normal <code class="language-plaintext highlighter-rouge">ext4</code> partition, the superblock is at offset <code class="language-plaintext highlighter-rouge">0x400</code> (<code class="language-plaintext highlighter-rouge">1024</code> bytes) from the start of the partition. To turn it into a normal mountable <code class="language-plaintext highlighter-rouge">ext4</code> partition, we need to move the superblock to offset <code class="language-plaintext highlighter-rouge">0x400</code> and then pad the first <code class="language-plaintext highlighter-rouge">1024</code> bytes with zeros.</p>
+
+<p>Now it can be mounted like a normal <code class="language-plaintext highlighter-rouge">ext4</code> image.</p>
+
+<h1 id="pixel-9-baseband-updates">Pixel 9 baseband updates</h1>
+
+<p>The Google Pixel 9 baseband is a bit different from the previous basebands. So different, in fact, that no reversing scripts currently support it. Not even the CRCs match. Let’s discuss how different it is, shall we?</p>
+
+<h2 id="headers">Headers</h2>
+
+<p>Here are headers parsed from the <code class="language-plaintext highlighter-rouge">modem.bin</code> of a Samsung device:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'TOC'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x40008000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00000410</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'BOOT'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000420</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x40000000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00003ab4</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x8e5cad14</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'MAIN'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00003ee0</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x40010000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x03c76f04</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0xf7e860e4</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'VSS'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x03c7ae00</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x4d000000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00550494</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x9a90150a</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'NV'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x49a00000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00100000</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'OFFSET'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00080000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00080000</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>And here are headers parsed from the <code class="language-plaintext highlighter-rouge">radio.img</code> of a Pixel 9 device:</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'TOC'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00000410</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'BOOT'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000410</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00021c00</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x037fe779</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'PSP'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00022010</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x12b80000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x0003d210</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x7c4d2a1e</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'MAIN'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x0005f220</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x40010000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x04e4bf78</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x7c93db29</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'APM'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x04eab198</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x02030000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x0000b848</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0xc499f34d</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'VSS'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x04eb69e0</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x4f900000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00520214</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0xde39fb73</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'DBGCORE'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x053d6bf4</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x11b00000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00001590</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0xfac85104</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'RF_CFG'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x4da00000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00327174</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'NV_NORM'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x4d200000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00080000</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">TocHeaderInfo</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">'NV_PROT'</span><span class="p">,</span> <span class="n">file_offset</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">load_address</span><span class="o">=</span><span class="mh">0x4d280000</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mh">0x00080000</span><span class="p">,</span> <span class="n">crc</span><span class="o">=</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="n">entry_id</span><span class="o">=</span><span class="mi">9</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The Samsung TOC headers are <code class="language-plaintext highlighter-rouge">TOC</code>, <code class="language-plaintext highlighter-rouge">BOOT</code>, <code class="language-plaintext highlighter-rouge">MAIN</code>, <code class="language-plaintext highlighter-rouge">VSS</code>, <code class="language-plaintext highlighter-rouge">NV</code>, and <code class="language-plaintext highlighter-rouge">OFFSET</code> while the Pixel TOC headers are <code class="language-plaintext highlighter-rouge">TOC</code>, <code class="language-plaintext highlighter-rouge">BOOT</code>, <code class="language-plaintext highlighter-rouge">PSP</code>, <code class="language-plaintext highlighter-rouge">MAIN</code>, <code class="language-plaintext highlighter-rouge">APM</code>, <code class="language-plaintext highlighter-rouge">VSS</code>, <code class="language-plaintext highlighter-rouge">DBGCORE</code>, <code class="language-plaintext highlighter-rouge">RF_CFG</code>, <code class="language-plaintext highlighter-rouge">NV_NORM</code>, and <code class="language-plaintext highlighter-rouge">NV_PROT</code>. The most interesting additions in my opinion are <code class="language-plaintext highlighter-rouge">APM</code> and <code class="language-plaintext highlighter-rouge">PSP</code>, which seem to stand for “Application Processor Module” and “Platform Security Processor”. At this point, though, that’s just a wild guess.</p>
+
+<p>These additions might or might not be related to the <a href="https://security.googleblog.com/2024/10/pixel-proactive-security-cellular-modems.html">recent hardening of the Google Pixel 9 baseband</a>. [<a href="#references">16</a>]</p>
+
+<h2 id="entropy">Entropy</h2>
+
+<p>With all of the scripts unable to match any of the known baseband structures, it would make sense to assume that most of the data we’re looking for must be encrypted or compressed in some way, right? Well, that doesn’t seem to be the case at all. A very simple check of the binary entropy debunks that assumption.</p>
+
+<p>For reference, here is the entropy graph of a Samsung baseband image where the reverse engineering scripts perform reliably:</p>
+
+<p><img src="/assets/images/reverse-engineering/2025/07/20/samsung_entropy.png" alt="The entropy of a Samsung baseband image" /></p>
+
+<p>And here is the entropy of a Google Pixel 9 baseband image where reverse engineering strategies are not publicly known:</p>
+
+<p><img src="/assets/images/reverse-engineering/2025/07/20/google_entropy.png" alt="The entropy of a Google Pixel 9 extracted baseband image" /></p>
+
+<p>It is so surprisingly identical that you have to squint to spot the differences. There is no data hiding or obfuscation going on — it’s just structured differently.</p>
+
+<h1 id="closing-note">Closing note</h1>
+
+<p>The Pixel 9 baseband is yet another reminder that nothing in this field stays still for long. The documentation is non-existent, the formats keep changing, and the only constant is the time wasted figuring out what broke this time. My new tool is far from well-tested, but it does help get the job done.</p>
+
+<p>If you’re looking for closure, you won’t find it here — just more questions, and probably a few more CRC mismatches.</p>
+
+<h1 id="references">References</h1>
+
+<p>[1] <a href="https://www.youtube.com/watch?v=o280NiZjNu8">Breaking Band talk</a><br />
+[2] <a href="https://www.youtube.com/watch?v=6bpxrfB9ioo">A walk with Shannon talk</a><br />
+[3] <a href="https://www.youtube.com/watch?v=wkWUU8820ro">Emulating Samsung’s Baseband for Security Testing talk</a><br />
+[4] <a href="https://github.com/grant-h/ShannonBaseband/tree/master/reversing/btl">Reversed BTL format structure</a><br />
+[5] <a href="https://github.com/grant-h/ShannonBaseband/tree/master/reversing/ghidra">Grant’s Ghidra reversing scripts and loader</a><br />
+[6] <a href="https://github.com/marin-m/vmlinux-to-elf">The <code class="language-plaintext highlighter-rouge">vmlinux-to-elf</code> source code</a><br />
+[7] <a href="https://github.com/themmokhtar/radio-to-elf">My <code class="language-plaintext highlighter-rouge">radio-to-elf</code> source code</a><br />
+[8] <a href="https://www.youtube.com/watch?v=quw8SnmMWg4">How to Hack Shannon Baseband (from a Phone) talk</a><br />
+[9] <a href="https://developer.arm.com/documentation/ddi0419/c/System-Level-Architecture/System-Address-Map/Protected-Memory-System-Architecture--PMSAv6/MPU-Region-Attribute-and-Size-Register--MPU-RASR?lang=en">ARM developer documentation covering <code class="language-plaintext highlighter-rouge">MPU_RASR</code></a><br />
+[10] <a href="https://github.com/alexander-pick/shannon_modem_loader/wiki/Extract-Google-Pixel-Modem-Images-%28FBPK---Fastboot-Package-Image-Format%29">Alexander Pick’s modem extraction guide for older pixel phones</a><br />
+[11] <a href="https://gitlab.com/CalyxOS/scripts/-/commit/b9def06273d5c68bca195474ce8c59a0ecc396e5">The CalyxOS version of <code class="language-plaintext highlighter-rouge">fbpacktool</code></a><br />
+[12] <a href="https://developers.google.com/android/binary_transparency/pixel_verification">Google’s Android Binary Transparency project (my ass)</a><br />
+[13] <a href="https://wiki.osdev.org/USTAR">One <code class="language-plaintext highlighter-rouge">tar</code> file format guide</a><br />
+[14] <a href="https://www.subspacefield.org/~vax/tar_format.html">Another <code class="language-plaintext highlighter-rouge">tar</code> file format guide</a><br />
+[15] <a href="https://docs.kernel.org/filesystems/ext4/globals.html#super-block">Linux kernel <code class="language-plaintext highlighter-rouge">ext4</code> superblock structure</a><br />
+[16] <a href="https://security.googleblog.com/2024/10/pixel-proactive-security-cellular-modems.html">Recent Google Pixel 9 security hardening</a></p>
+
+
+
+    <br/>
+    <p class="tags">
+        
+            <a class="post-tag" href="/tags#android">#android</a>
+        
+            <a class="post-tag" href="/tags#baseband">#baseband</a>
+        
+            <a class="post-tag" href="/tags#shannon">#shannon</a>
+        
+            <a class="post-tag" href="/tags#reverse-engineering">#reverse-engineering</a>
+        
+            <a class="post-tag" href="/tags#crashes">#crashes</a>
+        
+            <a class="post-tag" href="/tags#elf">#elf</a>
+        
+            <a class="post-tag" href="/tags#tar">#tar</a>
+        
+            <a class="post-tag" href="/tags#ext4">#ext4</a>
+        
+            <a class="post-tag" href="/tags#fastbootpack">#fastbootpack</a>
+        
+    </p>
+
+</article>
+
+<nav class="post-bidirectional-nav">
+    
+    
+
+
+
+
+    
+    
+
+
+
+
+</nav>
+
+
+
+
+
+    </main>
+    
+    <div id="menu" hidden>
+    
+
+
+<div class="command">
+    <nav class="path">
+<a href="/" class="path-item">~</a>
+</nav>
+
+    <div class="seperator"> ❯ </div>
+    <div class="text">
+        cat menu.md
+    </div>
+    <div class="comment">
+        # show menu
+    </div>
+</div>
+
+    <nav class="post">
+    
+        
+
+        
+            <div class="menu-item">Menu</div>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/tags">Tags</a>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/categories">Categories</a>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/about">About</a>
+        
+    
+    </nav>
+</div>
+<script>
+    const menuButton = document.querySelector('.menu-button');
+    const menu = document.getElementById('menu');
+    const main = document.querySelector('main');
+
+    menuButton.addEventListener('click', () => {
+        menu.hidden = !menu.hidden;
+        main.hidden = !main.hidden;
+
+        if(menuButton.classList.contains('active')) {
+            menuButton.classList.remove('active');
+        } else {
+            menuButton.classList.add('active');
+        }
+    });
+</script>
+
+    
+</div>
+<footer>
+    
+        <p class="copyright">
+        © 2025
+        
+            <a href="mailto:themmokhtar@gmail.com" _btarget="_blank">themmokhtar</a>
+        
+            All rights reserved.
+        </p>
+    
+
+    <p>
+        Using the <a href="https://jekyllrb.com/" target="_blank">Jekyll</a>
+        and <i>modified</i> <a href="https://github.com/fienestar/jekyll-terminal-theme" target="_blank">Terminal</a> theme.
+    </p>
+</footer>
+
+</div>
+</body>
+</html>
+

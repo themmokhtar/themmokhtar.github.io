@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+
+
+<title>themmokhtar</title>
+<meta name="title" content="themmokhtar">
+<meta name="description" content="Baseband and Android security research blog.">
+<meta name="og:url" content="https://themmokhtar.github.io/404.html">
+<meta name="og:title" content="themmokhtar">
+<meta name="og:description" content="Baseband and Android security research blog.">
+
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/uncon/MesloLGSNF-web-fonts/stylesheet.css" />
+
+<link href="/assets/css/main.css?version=1.0.1" rel="stylesheet" type="text/css">
+
+<script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+    tex2jax: {
+        inlineMath: [['$','$'], ['\\(','\\)']],
+        processEscapes: true
+    }
+    });
+</script>
+
+<script type="module" src="/assets/js/mermaid.js?version=1.0.1"></script>
+
+    <link rel="shortcut icon" type="image/png" href="/favicon.svg" >
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>themmokhtar | Baseband and Android security research blog.</title>
+<meta name="generator" content="Jekyll v3.9.3" />
+<meta property="og:title" content="themmokhtar" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Baseband and Android security research blog." />
+<meta property="og:description" content="Baseband and Android security research blog." />
+<link rel="canonical" href="https://themmokhtar.github.io/404.html" />
+<meta property="og:url" content="https://themmokhtar.github.io/404.html" />
+<meta property="og:site_name" content="themmokhtar" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="themmokhtar" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Baseband and Android security research blog.","headline":"themmokhtar","url":"https://themmokhtar.github.io/404.html"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body>
+<div class="layout">
+<div class="layout-content">
+    <header>
+        <div class="site-title"><a href="/">themmokhtar</a></div>
+        
+        <div class="menu-button">#</div>
+        
+    </header>
+    <main>
+    
+
+
+<div class="command">
+    <nav class="path">
+<a href="/" class="path-item">~</a>
+</nav>
+
+    <div class="seperator"> ❯ </div>
+    <div class="text">
+        
+    </div>
+    <div class="comment">
+        
+    </div>
+</div>
+
+<h1 hidden>404 Page not found</h1>
+<p id="page-not-found-error" class="result-error" hidden></p>
+<script>
+  function setCommand(command, comment = "") {
+    const commandText = document.querySelector('.command > .text');
+    commandText.innerText = command;
+  }
+
+  const baseurl = "";
+  let request_path = location.pathname;
+
+  if(request_path.startsWith(baseurl)) {
+    request_path = request_path.slice(baseurl.length);
+  }
+
+  if(request_path.startsWith('/')) {
+    request_path = request_path.slice(1);
+  }
+
+  if(request_path.endsWith('.md')) {
+    const split = request_path.split('/');
+    let filename = split.at(-1);
+
+    if(request_path.match(/\/\d{4}\/\d{2}\/\d{2}\//) === null)
+      filename = filename.replace(/^\d{4}-\d{2}-\d{2}-/, v => v.replaceAll('-', '/'));
+    split[split.length-1] = filename.slice(0, -'md'.length) + 'html';
+    console.log([baseurl, ...split].join('/'))
+    location.href = [baseurl, ...split].join('/');
+  } else {
+    request_path = decodeURIComponent(request_path);
+    setCommand(`cat "${request_path}"`)
+
+    const pageNotFoundError = document.querySelector('#page-not-found-error');
+    pageNotFoundError.innerText = `cat: ${request_path}: No such file or directory`;
+    pageNotFoundError.hidden = false;
+  }
+</script>  
+
+    </main>
+    
+    <div id="menu" hidden>
+    
+
+
+<div class="command">
+    <nav class="path">
+<a href="/" class="path-item">~</a>
+</nav>
+
+    <div class="seperator"> ❯ </div>
+    <div class="text">
+        cat menu.md
+    </div>
+    <div class="comment">
+        # show menu
+    </div>
+</div>
+
+    <nav class="post">
+    
+        
+
+        
+            <div class="menu-item">Menu</div>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/tags">Tags</a>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/categories">Categories</a>
+        
+    
+        
+
+        
+            
+            
+            <a class="menu-item" href="/about">About</a>
+        
+    
+    </nav>
+</div>
+<script>
+    const menuButton = document.querySelector('.menu-button');
+    const menu = document.getElementById('menu');
+    const main = document.querySelector('main');
+
+    menuButton.addEventListener('click', () => {
+        menu.hidden = !menu.hidden;
+        main.hidden = !main.hidden;
+
+        if(menuButton.classList.contains('active')) {
+            menuButton.classList.remove('active');
+        } else {
+            menuButton.classList.add('active');
+        }
+    });
+</script>
+
+    
+</div>
+<footer>
+    
+        <p class="copyright">
+        © 2025
+        
+            <a href="mailto:themmokhtar@gmail.com" _btarget="_blank">themmokhtar</a>
+        
+            All rights reserved.
+        </p>
+    
+
+    <p>
+        Using the <a href="https://jekyllrb.com/" target="_blank">Jekyll</a>
+        and <i>modified</i> <a href="https://github.com/fienestar/jekyll-terminal-theme" target="_blank">Terminal</a> theme.
+    </p>
+</footer>
+
+</div>
+</body>
+</html>
+

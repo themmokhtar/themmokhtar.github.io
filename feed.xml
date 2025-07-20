@@ -1,0 +1,538 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.9.3">Jekyll</generator><link href="https://themmokhtar.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://themmokhtar.github.io/" rel="alternate" type="text/html" /><updated>2025-07-20T10:58:31+02:00</updated><id>https://themmokhtar.github.io/feed.xml</id><title type="html">themmokhtar</title><subtitle>Baseband and Android security research blog.</subtitle><entry xml:lang="en_US"><title type="html">Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans</title><link href="https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html" rel="alternate" type="text/html" title="Shannon Baseband: Pixel 9 Reverse Engineering Shenanigans" /><published>2025-07-20T00:00:00+02:00</published><updated>2025-07-20T00:00:00+02:00</updated><id>https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband:-pixel-9-reverse-engineering-shenanigans</id><content type="html" xml:base="https://themmokhtar.github.io/reverse-engineering/2025/07/20/shannon-baseband-pixel-9-reverse-engineering-shenanigans.html">&lt;p&gt;This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9.&lt;/p&gt;
+
+&lt;h1 id=&quot;table-of-contents&quot;&gt;Table of Contents&lt;/h1&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;#backstory&quot;&gt;Backstory&lt;/a&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;#finding-baseband-vulnerabilities-is-easy&quot;&gt;Finding baseband vulnerabilities is &lt;em&gt;easy&lt;/em&gt;&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#can-we-make-it-disclose-more-information&quot;&gt;Can we make it disclose more information?&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#just-emulate-it-they-said-itll-be-easy-they-said&quot;&gt;Just emulate it, they said. It’ll be easy, they said.&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#the-severe-lack-of-public-research&quot;&gt;The severe lack of public research&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#the-pickle&quot;&gt;The pickle&lt;/a&gt;&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#reversing-with-style&quot;&gt;Reversing with style&lt;/a&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;#the-mpu-table-format&quot;&gt;The MPU table format&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#scatterload-format&quot;&gt;Scatterload format&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#task-control-block-format&quot;&gt;Task control block format&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#extracting-the-modembin-from-a-pixel-radioimg&quot;&gt;Extracting the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; from a Pixel &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;&lt;/a&gt;
+        &lt;ul&gt;
+          &lt;li&gt;&lt;a href=&quot;#unpacking-the-radioimg&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;a href=&quot;#unpacking-the-modemimg&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+          &lt;li&gt;&lt;a href=&quot;#unpacking-the-modemext4&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+        &lt;/ul&gt;
+      &lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#pixel-9-baseband-updates&quot;&gt;Pixel 9 baseband updates&lt;/a&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;#headers&quot;&gt;Headers&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#entropy&quot;&gt;Entropy&lt;/a&gt;&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#closing-note&quot;&gt;Closing note&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#references&quot;&gt;References&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;backstory&quot;&gt;Backstory&lt;/h1&gt;
+&lt;p&gt;My way to start any security research topic is to go through previous research. I believe the most important research on the Shannon Baseband is, in no particular order:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://www.youtube.com/watch?v=o280NiZjNu8&quot;&gt;Breaking Band&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;1&lt;/a&gt;] by Nico Golde and Daniel Komaromy&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://www.youtube.com/watch?v=6bpxrfB9ioo&quot;&gt;A walk with Shannon&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;2&lt;/a&gt;] by Amat Cama&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://www.youtube.com/watch?v=wkWUU8820ro&quot;&gt;Emulating Samsung’s Baseband for Security Testing&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;3&lt;/a&gt;] by Grant Hernandez and Marius Muench&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;These talks helped shape the current state of the Shannon Baseband research field.&lt;/p&gt;
+
+&lt;h2 id=&quot;finding-baseband-vulnerabilities-is-easy&quot;&gt;Finding baseband vulnerabilities is &lt;em&gt;easy&lt;/em&gt;&lt;/h2&gt;
+
+&lt;p&gt;Before you come at me with pitchforks, let me explain. Crashing the baseband is surprisingly easy — so easy, in fact, that I did it by accident. I won’t go into specifics about the subsystem I was working with, but I will say that it was one I had no prior knowledge of. I relied on publicly available ETSI and 3GPP specifications to understand the message format, connected everything accordingly, and started experimenting with various messages just to observe how the system would respond.&lt;/p&gt;
+
+&lt;p&gt;I wasn’t even trying to crash it, but I did. Not only that, but the crash is also reproducible and worked on three different devices (two Google models and one Samsung model.) Can you imagine how many crashes you can get if you actually try?&lt;/p&gt;
+
+&lt;p&gt;This isn’t just my experience either. In Grant Hernandez’s talk, he said:&lt;/p&gt;
+&lt;blockquote&gt;
+  &lt;p&gt;“We found crashes, which is really cool, but then we now realized the main issue with this approach [is that] we couldn’t understand why they had crashed. We were just flipping bits randomly. Not to mention that the phones themselves weren’t giving us the required debugging output to actually figure out what was happening, let alone the impact of what we just found.”&lt;/p&gt;
+
+  &lt;p&gt;- Grant Hernandez&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Let us also note that baseband crash behavior is different from vendor to vendor. On Google devices, the baseband crashes and restarts without the Android OS rebooting. This results in a minidump being generated in logcat. Still nowhere near enough information. On Samsung devices, the baseband crashes and shows a crash screen to allow for dumping. None of these are enough to understand the crash, but they are enough to know that the baseband is vulnerable.&lt;/p&gt;
+
+&lt;h2 id=&quot;can-we-make-it-disclose-more-information&quot;&gt;Can we make it disclose more information?&lt;/h2&gt;
+
+&lt;p&gt;I investigated the possibility of making the baseband disclose more information at runtime. These are the two main things I investigated in that regard:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Reverse and manipulate the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cbd&lt;/code&gt; user-space task (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;c&lt;/code&gt;ellular &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;b&lt;/code&gt;aseband &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;d&lt;/code&gt;aemon) to make it log more information or provide more information than it normally does.&lt;/li&gt;
+  &lt;li&gt;Reverse and manipulate the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cpif&lt;/code&gt; kernel-space driver (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;c&lt;/code&gt;ellular &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;p&lt;/code&gt;rocessor &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;i&lt;/code&gt;nter&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;f&lt;/code&gt;ace) to make it log more information&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;For the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cbd&lt;/code&gt; task, through some preliminary reversing, it simply seems like that task does not actually have a lot of information to provide. I recompiled a modified implementation of the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cpif&lt;/code&gt; driver to understand it more and see if I can make it log more information&lt;/p&gt;
+
+&lt;p&gt;By far, the most interesting thing to play around with is the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CONFIG_CP_BTL&lt;/code&gt; kernel configuration. BTL is the format used by the baseband for logging. It has already been &lt;a href=&quot;https://github.com/grant-h/ShannonBaseband/tree/master/reversing/btl&quot;&gt;reverse engineered by Grant and his team&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;4&lt;/a&gt;]. I did enable it, but after some time spent there, it seems that something needs to be modified on the baseband side to make it actually send the data over to the application processor.&lt;/p&gt;
+
+&lt;p&gt;Of course, I’m unsure of that. To know that for sure, I need to reverse the baseband more.&lt;/p&gt;
+
+&lt;h2 id=&quot;just-emulate-it-they-said-itll-be-easy-they-said&quot;&gt;Just emulate it, they said. It’ll be easy, they said.&lt;/h2&gt;
+
+&lt;p&gt;FirmWire is a baseband emulation tool. By all means, it is a great tool, but it is not a silver bullet. For my specific use case, it isn’t very helpful. This is for two reasons. The first is that it simply does not work on the Google Pixel 9 modems, which is my target.&lt;/p&gt;
+
+&lt;p&gt;The second, more important reason is how FirmWire works. By definition, FirmWire is not actually connected to any real hardware. To combat this, FirmWire offers a clever workaround: injecting a custom baseband task that communicates with other tasks through the queues. I believe this is one of the best ways to go about this problem. However, to understand the data format sent to the queues, reverse engineering is still required.&lt;/p&gt;
+
+&lt;p&gt;Simply put, we need one of the following to understand and exploit baseband vulnerabilities:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Debugging (requires reversing)&lt;/li&gt;
+  &lt;li&gt;Emulation (requires reversing)&lt;/li&gt;
+  &lt;li&gt;Reversing (obviously)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Since I’m lazy, I’ll stick to reversing. Whatever gets the job done faster is better.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-severe-lack-of-public-research&quot;&gt;The severe lack of public research&lt;/h2&gt;
+
+&lt;p&gt;A big issue regarding (Shannon) baseband research is that changes in the baseband are faster than public research. This is not because changes in the baseband are fast, but because public research is very lacking, to say the least.&lt;/p&gt;
+
+&lt;p&gt;For example, in Grant’s talk, he said:&lt;/p&gt;
+&lt;blockquote&gt;
+  &lt;p&gt;“There had been [a] talk that actually [mentions] these files were encrypted.
+We didn’t see that. None of our images were encrypted.” - Grant Hernandez&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;He is talking about the Breaking Band talk, and I see where he is coming from. The publicly documented methods for dumping baseband images and logs no longer seem applicable. For context, the Breaking Band talk was given in 2016, while Grant’s talk was given in 2021. Imagine the most recent public research you can find on a topic being from five years ago.&lt;/p&gt;
+
+&lt;p&gt;I faced similar problems using the &lt;a href=&quot;https://github.com/grant-h/ShannonBaseband/tree/master/reversing/ghidra&quot;&gt;reversing scripts&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;5&lt;/a&gt;] Grant wrote, which in the end caused me to write my own reversing tool.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-pickle&quot;&gt;The pickle&lt;/h2&gt;
+
+&lt;p&gt;Well, I already have crashes, but it is virtually impossible to understand and exploit these crashes without reversing. Without effective reverse engineering, even basic vulnerability analysis becomes a guessing game.&lt;/p&gt;
+
+&lt;p&gt;Emulation is not a bulletproof solution either, because to reproduce the crashes in an emulated baseband, you need to reverse engineer it enough to know:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Which task to target&lt;/li&gt;
+  &lt;li&gt;Which queue to write to&lt;/li&gt;
+  &lt;li&gt;The exact format in the queue (which might or might not be different from the data sent over the air)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;A lot of previous research resorted to “dumping the baseband memory through dial-up commands.” This did not work at all from my experience. On Samsung devices, the dumps did not contain any baseband-related memory or logs. On Google Pixel devices, the dial-up commands are not even supported anymore.&lt;/p&gt;
+
+&lt;h1 id=&quot;reversing-with-style&quot;&gt;Reversing with style&lt;/h1&gt;
+
+&lt;p&gt;Grant’s reversing scripts are an amazing starting point, but they are quite old now (supports only old Ghidra versions,) and more importantly, they do not work completely well on my target devices.&lt;/p&gt;
+
+&lt;p&gt;On the Galaxy S20FE baseband image, the MPU table (more on that later) was not detected correctly. On the Pixel 9, nothing was detected. Not even the CRCs matched. Worse yet, even after the baseband of a supported phone was loaded, it can take a while for someone who is searching for the first time to find the task list and task entries.&lt;/p&gt;
+
+&lt;p&gt;To solve this, I wrote a python script that takes inspiration from the &lt;a href=&quot;https://github.com/marin-m/vmlinux-to-elf&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;vmlinux-to-elf&lt;/code&gt; tool by marin-m&lt;/a&gt;. [&lt;a href=&quot;#references&quot;&gt;6&lt;/a&gt;] This is by far, one of the most long-lasting and well-tested reversing tools I have ever seen. Therefore, I wrote a similar tool for the Shannon Baseband, called &lt;a href=&quot;https://github.com/themmokhtar/radio-to-elf&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio-to-elf&lt;/code&gt;&lt;/a&gt;.  [&lt;a href=&quot;#references&quot;&gt;7&lt;/a&gt;]&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio-to-elf&lt;/code&gt; is a Python script that converts a baseband image into an ELF file suitable for any reversing tool. It does this by:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Extracting a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; from a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt; (if applicable)&lt;/li&gt;
+  &lt;li&gt;Parsing the TOC header and verifying the CRCs&lt;/li&gt;
+  &lt;li&gt;Extracting and parsing the MPU table&lt;/li&gt;
+  &lt;li&gt;Extracting and parsing the scatterload table&lt;/li&gt;
+  &lt;li&gt;Extracting the task list and task entries&lt;/li&gt;
+  &lt;li&gt;Turning the baseband image into a symbolized ELF file for reversing&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The main benefit of this approach is that now only one type of compatibility mismatch can happen, which is regarding the baseband image format. This is much better than having to deal with compatibility issues regarding both the baseband image format and the reversing tool(s).&lt;/p&gt;
+
+&lt;p&gt;One extra feature of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio-to-elf&lt;/code&gt; is that it can also extract the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; from a google pixel &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt; file. This has never been done before. Even in the talk by Google Project Zero &lt;a href=&quot;https://www.youtube.com/watch?v=quw8SnmMWg4&quot;&gt;How to Hack Shannon Baseband (from a Phone)&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;8&lt;/a&gt;] given by Natalie Silvanovich, the baseband was from memory using dial-up commands which don’t work anymore.&lt;/p&gt;
+
+&lt;p&gt;Enough ranting. Time to check out the baseband format.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-mpu-table-format&quot;&gt;The MPU table format&lt;/h2&gt;
+
+&lt;p&gt;The MPU table is a structure in Shannon Baseband images that outlines the memory access permissions for different regions of memory. This is extremely useful for distinguishing code from data during reversing and exploitation.&lt;/p&gt;
+
+&lt;p&gt;This is a dump of the first 0x100 bytes of an example MPU table:&lt;/p&gt;
+
+&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;000000&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 1e 00 00 00 08 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000010&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000020&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 01 00 00 00 01 00 00 00 00 00 20 40 ...............@&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000030&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;28 00 00 00 08 00 00 00 00 06 00 00 00 10 00 00 (...............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000040&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 02 00 00 00 01 00 00 00 01 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000050&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;02 00 00 00 00 00 40 40 28 00 00 00 08 00 00 00 ......@@(.......&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000060&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 06 00 00 00 10 00 00 00 00 00 00 02 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000070&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;01 00 00 00 01 00 00 00 03 00 00 00 00 00 c0 49 ...............I&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000080&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;26 00 00 00 08 00 00 00 00 03 00 00 00 10 00 00 &amp;amp;...............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000090&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;04 00 00 00 00 00 d0 49 26 00 00 00 08 00 00 00 .......I&amp;amp;.......&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 06 00 00 00 00 00 00 00 00 00 00 02 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;01 00 00 00 01 00 00 00 05 00 00 00 00 00 e0 49 ...............I&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;26 00 00 00 08 00 00 00 00 06 00 00 00 00 00 00 &amp;amp;...............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 02 00 00 00 01 00 00 00 01 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;06 00 00 00 00 00 f0 49 26 00 00 00 08 00 00 00 .......I&amp;amp;.......&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Here is a better breakdown of the first MPU slot:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;&lt;strong&gt;Field&lt;/strong&gt;&lt;/th&gt;
+      &lt;th&gt;&lt;strong&gt;Range&lt;/strong&gt;&lt;/th&gt;
+      &lt;th&gt;&lt;strong&gt;Value&lt;/strong&gt;&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Slot ID&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x0&lt;/code&gt;-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x3&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x0&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Base Address&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x4&lt;/code&gt;-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x8&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x00000000&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x8&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x0608001f&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR&lt;/code&gt; is short for “Memory Protection Unit Region Attribute and Size Register.” It is a register that defines the attributes and size of a memory region in the MPU. The bits in this register are used to control access permissions, cacheability, and other attributes of the memory region.&lt;/p&gt;
+
+&lt;p&gt;How did we calculate it? If we assume the MPU slot to be a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uint32_t items[10];&lt;/code&gt;, then &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR = ((items[2] | items[9]) | (items[3] | items[4] | items[5] | items[6] | items[7] | items[8]) &amp;lt;&amp;lt; 16)&lt;/code&gt;. Don’t ask me why it is formatted like that because I have no idea. This is just how it is.&lt;/p&gt;
+
+&lt;p&gt;With the help of the &lt;a href=&quot;https://developer.arm.com/documentation/ddi0419/c/System-Level-Architecture/System-Address-Map/Protected-Memory-System-Architecture--PMSAv6/MPU-Region-Attribute-and-Size-Register--MPU-RASR?lang=en&quot;&gt;ARM developer documentation&lt;/a&gt;, [&lt;a href=&quot;#references&quot;&gt;9&lt;/a&gt;] the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR&lt;/code&gt; register is structured as follows:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Bits&lt;/th&gt;
+      &lt;th&gt;Name&lt;/th&gt;
+      &lt;th&gt;Function&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[31:16]&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;ATTRS&lt;/td&gt;
+      &lt;td&gt;The MPU Region Attribute field. This field has the following subfields, defined in &lt;em&gt;Region attribute control&lt;/em&gt;: &lt;br /&gt; - &lt;strong&gt;XN&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[28]&lt;/code&gt;)&lt;br /&gt; - &lt;strong&gt;AP[2:0]&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[26:24]&lt;/code&gt;)&lt;br /&gt; - &lt;strong&gt;TEX[2:0]&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[21:19]&lt;/code&gt;)&lt;br /&gt; - &lt;strong&gt;S&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[18]&lt;/code&gt;)&lt;br /&gt; - &lt;strong&gt;C&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[17]&lt;/code&gt;)&lt;br /&gt; - &lt;strong&gt;B&lt;/strong&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR[16]&lt;/code&gt;)&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[15:8]&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;SRD&lt;/td&gt;
+      &lt;td&gt;Subregion Disable. For regions of 256 bytes or larger, each bit of this field controls whether one of the eight equal subregions is enabled. See &lt;em&gt;Memory region subregions&lt;/em&gt;: &lt;br /&gt; - &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0&lt;/code&gt;: subregion enabled &lt;br /&gt; - &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&lt;/code&gt;: subregion disabled&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[7:6]&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;-&lt;/td&gt;
+      &lt;td&gt;Reserved&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[5:1]&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;SIZE&lt;/td&gt;
+      &lt;td&gt;Indicates the region size.&lt;br /&gt;The permitted values for SIZE are &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;7-31&lt;/code&gt;, i.e., &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0b00111&lt;/code&gt;–&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0b11111&lt;/code&gt;.&lt;br /&gt;The associated region size, in bytes, is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;2^(SIZE+1)&lt;/code&gt;.&lt;br /&gt;SIZE values less than &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;7&lt;/code&gt; are reserved, as the smallest supported region size is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;256&lt;/code&gt; bytes.&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[0]&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;ENABLE&lt;/td&gt;
+      &lt;td&gt;Enables this region: &lt;br /&gt; - &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0&lt;/code&gt;: When the MPU is enabled, this region is disabled. &lt;br /&gt; - &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&lt;/code&gt;: When the MPU is enabled, this region is enabled. &lt;br /&gt;&lt;br /&gt;Enabling a region has no effect unless the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_CTRL.ENABLE&lt;/code&gt; bit is also set to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1&lt;/code&gt;, to enable the MPU.&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Grant’s pattern matching did not work for me on newer basebands, so I used a different pattern to match the MPU table. The pattern I used is:&lt;/p&gt;
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;sa&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;join&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# the entry slot ID of x
+&lt;/span&gt;        &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;I&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# a start address of zero for the first slot, and any address for the rest
+&lt;/span&gt;        &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;sa&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;[&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;x00]{4}&quot;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;sa&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;.{4}&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# 7 arbitrary 4-byte values
+&lt;/span&gt;        &lt;span class=&quot;sa&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;.{28}&quot;&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# the enable boolean of 1
+&lt;/span&gt;        &lt;span class=&quot;sa&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;x01&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;x00&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;x00&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;x00&quot;&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;# For 4 slots (this could be adjusted)
+&lt;/span&gt;        &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;The main difference is that Grant’s pattern used a fixed known address for the second slot, while this pattern doesn’t.&lt;/p&gt;
+
+&lt;h2 id=&quot;scatterload-format&quot;&gt;Scatterload format&lt;/h2&gt;
+
+&lt;p&gt;Scatterload is a link-time loading mechanism used in Shannon Baseband images. It enables fine-grained control over how chunks of memory are loaded. Unlike the MPU table, scatterloading operates at byte-level granularity rather than page-level. As a side-note, scatterloading functions are super-useful ROP gadgets.&lt;/p&gt;
+
+&lt;p&gt;There are multiple versions of scatterloading functions, but the structure is one and the same. Here is an example dump of a scatterload table:&lt;/p&gt;
+
+&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;000000&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;20 24 98 42 00 00 00 00 00 00 00 00 80 ae 8d 42 .$.B...........B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000010&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 20 24 98 42 00 00 00 00 80 ae 8d 42 .....$.B.......B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000020&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;20 34 98 42 20 34 98 42 f4 8e 23 00 1c af 8d 42 .4.B.4.B..#....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000030&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;e0 26 88 43 40 00 d0 47 50 49 0c 00 1c af 8d 42 .&amp;amp;.C@..GPI.....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000040&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;30 70 94 43 90 49 dc 47 30 89 22 00 a8 ae 8d 42 0p.C.I.G0.&quot;....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000050&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;c8 e1 a1 43 00 00 00 48 00 00 10 01 a8 ae 8d 42 ...C...H.......B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000060&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;ec 03 a4 43 00 00 c0 49 30 30 00 00 1c af 8d 42 ...C...I00.....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000070&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;1c 34 a4 43 00 00 d0 49 f4 ae 0b 00 1c af 8d 42 .4.C...I.......B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000080&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 00 b0 4a fc 00 00 00 1c af 8d 42 ...C...J.......B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000090&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;0c e4 af 43 00 00 d0 4c 24 43 01 00 a8 ae 8d 42 ...C...L$C.....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;98 e6 af 43 00 00 50 4c 20 05 53 00 a8 ae 8d 42 ...C..PL..S....B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;e8 64 c0 43 00 00 80 52 00 00 00 04 a8 ae 8d 42 .d.C...R.......B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 00 70 4a a4 00 00 00 44 af 8d 42 ...C..pJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 01 70 4a b4 02 00 00 44 af 8d 42 ...C..pJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 09 70 4a 14 00 00 00 44 af 8d 42 ...C..pJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 80 09 70 4a 8c 24 00 00 44 af 8d 42 ...C..pJ.$..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000100&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 80 39 70 4a 84 06 00 00 44 af 8d 42 ...C.9pJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000110&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 80 41 70 4a 04 00 00 00 44 af 8d 42 ...C.ApJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000120&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 42 70 4a 00 07 00 00 44 af 8d 42 ...C.BpJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000130&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 4a 70 4a 6c 2f 00 00 44 af 8d 42 ...C.JpJl/..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000140&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 0a 71 4a 60 9a 01 00 44 af 8d 42 ...C..qJ`...D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000150&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 aa 72 4a 14 23 01 00 44 af 8d 42 ...C..rJ.#..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000160&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 aa 75 4a fc c2 20 00 44 af 8d 42 ...C..uJ....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000170&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;10 e3 af 43 00 00 98 4a 48 64 17 00 44 af 8d 42 ...C...JHd..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000180&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;0c e4 af 43 fc 00 b0 4a dc c9 84 00 44 af 8d 42 ...C...J....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000190&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;0c e4 af 43 00 00 40 4b a0 45 04 01 44 af 8d 42 ...C..@K.E..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;98 e6 af 43 24 43 d1 4c 1c 99 2a 00 44 af 8d 42 ...C$C.L..*.D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 20 05 a3 4c 00 ef 0c 00 44 af 8d 42 L..C...L....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 00 10 70 4d 20 34 00 00 44 af 8d 42 L..C..pM.4..D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 00 80 71 4d 98 09 00 00 44 af 8d 42 L..C..qM....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 00 90 71 4d c8 19 00 00 44 af 8d 42 L..C..qM....D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 00 c0 71 4d 58 00 00 00 44 af 8d 42 L..C..qMX...D..B&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000200&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;4c 8d b0 43 00 00 72 4d a8 ad 04 00 44 af 8d 42 L..C..rM....D..B&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Instead of just talking about how to reach this table from a scatterload function, here is an outline of the references and the contents of the scatterload table:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/reverse-engineering/2025/07/20/scatterload.png&quot; alt=&quot;Scatterload Connection Structure&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Note that each element in the scatterload table is an unsigned 32-bit integer, and an entry contains only 4 elements, making this structure quite straightforward. Basically all the scatterload function does is go through the list of function pointers and call them with the specified arguments.&lt;/p&gt;
+
+&lt;h2 id=&quot;task-control-block-format&quot;&gt;Task control block format&lt;/h2&gt;
+
+&lt;p&gt;None of the reversing tools currently provide a way to have a list of tasks and be able to start reversing an appropriate task accordingly. It took me a bit to find the tasks that are relevant to the subsystem I was interested in. To save myself and future researchers this hassle, I also added support to automatically extract the task list and task entries from the baseband image.&lt;/p&gt;
+
+&lt;p&gt;The reason this makes such a difference is because now any resource referencing a vulnerability can simply showcase the task name and the call stack leading to the vulnerability, making it much easier for anyone to go through the code path and understand it.&lt;/p&gt;
+
+&lt;p&gt;Here is how that is structured:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/reverse-engineering/2025/07/20/task_entries.png&quot; alt=&quot;Task TCBs structure&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;In order to find the task entries, we simply:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Search for the task names&lt;/li&gt;
+  &lt;li&gt;Calculate their runtime addresses&lt;/li&gt;
+  &lt;li&gt;Search for those addresses in the baseband image to find the name pointers&lt;/li&gt;
+  &lt;li&gt;Get the task entries’ addresses by offsetting the name pointers&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;All of those addresses are then symbolized in the generated ELF file, making it easy to find them in Ghidra or any other reversing tool.&lt;/p&gt;
+
+&lt;h2 id=&quot;extracting-the-modembin-from-a-pixel-radioimg&quot;&gt;Extracting the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; from a Pixel &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;&lt;/h2&gt;
+
+&lt;p&gt;Before I go into how it’s done, let me explain why I did it.&lt;/p&gt;
+
+&lt;p&gt;First, I extracted the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; from a rooted Pixel 9 device. This &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; didn’t match any modem images I’d seen before. This led me to believe the image was corrupt due to how different it appeared. Here are the differences:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;The TOC header’s CRCs did not match the expected values&lt;/li&gt;
+  &lt;li&gt;The MPU table was nowhere to be found&lt;/li&gt;
+  &lt;li&gt;The scatterload table was nowhere to be found&lt;/li&gt;
+  &lt;li&gt;The task names were present, but the TCBs were missing&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;That was enough to convince me the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; was incomplete or malformed — and that’s how we ended up here. But I digress.&lt;/p&gt;
+
+&lt;p&gt;The extraction is a three-step process:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;&lt;strong&gt;In&lt;/strong&gt;&lt;/th&gt;
+      &lt;th&gt;&lt;strong&gt;Format&lt;/strong&gt;&lt;/th&gt;
+      &lt;th&gt;&lt;strong&gt;The Catch&lt;/strong&gt;&lt;/th&gt;
+      &lt;th&gt;&lt;strong&gt;Out&lt;/strong&gt;&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;FastBootPacK&lt;/td&gt;
+      &lt;td&gt;It uses FBPK version 1, not version 2&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; Archive&lt;/td&gt;
+      &lt;td&gt;The owner UID field is not standard format&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; Partition&lt;/td&gt;
+      &lt;td&gt;The superblock is not at offset 1024, it is at the start of the file&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt;&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;This is different from previous baseband images, where the extraction method was much simpler as outlined by &lt;a href=&quot;https://github.com/alexander-pick/shannon_modem_loader/wiki/Extract-Google-Pixel-Modem-Images-%28FBPK---Fastboot-Package-Image-Format%29&quot;&gt;Alexander Pick&lt;/a&gt;. [&lt;a href=&quot;#references&quot;&gt;10&lt;/a&gt;] There was no tar middle step, and the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt; could be mounted directly as an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition.&lt;/p&gt;
+
+&lt;p&gt;With every single packing step, there was always some deviation from the expected format. This was, of course, a pain to figure out.&lt;/p&gt;
+
+&lt;h3 id=&quot;unpacking-the-radioimg&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;The first step is to extract the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt; from the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt;. The fastboot packing version is a bit different from the standard one, so we need to account for that. Here is an example dump of the first 0x100 bytes of a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt; file:&lt;/p&gt;
+
+&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;000000&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;46 42 50 4b 01 00 00 00 67 35 34 30 30 63 2d 32 FBPK....g5400c-2&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000010&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;34 31 32 30 35 2d 32 35 30 31 32 37 2d 4d 2d 31 41205-250127-M-1&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000020&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;32 39 37 31 37 31 36 00 00 00 00 00 00 00 00 00 2971716.........&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000030&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000040&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000050&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;8c 10 6f 0b 01 00 00 00 6d 6f 64 65 6d 00 00 00 ..o.....modem...&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000060&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000070&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 10 6f 0b ..............o.&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000080&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 90 10 6f 0b c2 fb 94 db 67 35 34 30 ......o.....g540&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000090&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;30 63 2d 32 34 31 32 30 35 2d 32 35 30 31 32 37 0c-241205-250127&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;2d 42 2d 31 32 39 37 31 37 31 36 00 00 00 00 00 -B-12971716.....&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;30 30 30 30 36 36 34 00 80 00 00 00 15 fe 9a b2 0000664.........&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The version number is right after the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;FBPK&lt;/code&gt; magic, at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x4&lt;/code&gt;. As outlined by Alexander Pick, the image can be unpacked using the &lt;a href=&quot;https://gitlab.com/CalyxOS/scripts/-/commit/b9def06273d5c68bca195474ce8c59a0ecc396e5&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;fbpacktool&lt;/code&gt; provided by &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CalyxOS&lt;/code&gt;&lt;/a&gt;.  [&lt;a href=&quot;#references&quot;&gt;11&lt;/a&gt;] This is an updated version of the original tool &lt;a href=&quot;https://developers.google.com/android/binary_transparency/pixel_verification&quot;&gt;provided by Google’s Android Binary Transparency project&lt;/a&gt;.  [&lt;a href=&quot;#references&quot;&gt;12&lt;/a&gt;]&lt;/p&gt;
+
+&lt;p&gt;With all due respect, binary transparency my ass.&lt;/p&gt;
+
+&lt;h3 id=&quot;unpacking-the-modemimg&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.img&lt;/code&gt; is a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; file, but it’s just slightly modified — enough to make you question if it is actually a normal &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; file. Here is a hexdump of the first &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x200&lt;/code&gt; bytes:&lt;/p&gt;
+&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;000000&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;67 35 34 30 30 63 2d 32 34 31 32 30 35 2d 32 35 g5400c-241205-25&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000010&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;30 31 32 37 2d 42 2d 31 32 39 37 31 37 31 36 00 0127-B-12971716.&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000020&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000030&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000040&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000050&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000060&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 30 30 30 30 36 36 34 00 80 00 00 00 ....0000664.....&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000070&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;15 fe 9a b2 30 30 31 31 36 31 30 00 30 30 30 30 ....0011610.0000&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000080&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;30 30 30 30 30 30 30 00 31 34 37 34 35 37 34 36 &lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0000000.14745746&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000090&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;36 33 31 00 30 32 30 34 35 36 00 20 30 00 00 00 631.020456..0...&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000100&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 75 73 74 61 72 20 20 00 61 6e 64 72 6f 69 64 .ustar...android&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000110&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;2d 62 75 69 6c 64 2d 61 6e 64 72 6f 69 64 2d 66 -build-android-f&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000120&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;69 72 6d 77 61 72 65 2d 00 65 6e 67 00 00 00 00 irmware-.eng....&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000130&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000140&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000150&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000160&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000170&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000180&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000190&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0001f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Fun fact, the extended &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; file format magic &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ustar&lt;/code&gt; is at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x101&lt;/code&gt;, not at the beginning of the file. The main change is that the owner UID field at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x6C&lt;/code&gt; is not in the &lt;a href=&quot;https://wiki.osdev.org/USTAR&quot;&gt;standard&lt;/a&gt; &lt;a href=&quot;https://www.subspacefield.org/~vax/tar_format.html&quot;&gt;format&lt;/a&gt;.  [&lt;a href=&quot;#references&quot;&gt;13&lt;/a&gt;][&lt;a href=&quot;#references&quot;&gt;14&lt;/a&gt;] Weirdly enough, tar file header elements are strings of the octal representation of the value. The version in Pixel 9 phones, however, only breaks this rule for the owner UID field (not even for the group UID field.) Just the owner UID field. Like, why?&lt;/p&gt;
+
+&lt;p&gt;Regardless, it can be extracted like a normal tar file.&lt;/p&gt;
+
+&lt;h3 id=&quot;unpacking-the-modemext4&quot;&gt;Unpacking the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;This step took me the longest to figure out. The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt; file is not a standard &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition. It is a modified &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition that has the superblock at the start of the file, not at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1024&lt;/code&gt; as expected. This is why it was not recognized as an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition using standard reversing tools like &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;file&lt;/code&gt; or &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;binwalk&lt;/code&gt;. Here is a hexdump of the first &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x100&lt;/code&gt; bytes of the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.ext4&lt;/code&gt; file:&lt;/p&gt;
+
+&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;000000&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 28 00 00 f0 b6 00 00 00 00 00 00 ac 00 00 00 .(..............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000010&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;ac 27 00 00 00 00 00 00 02 00 00 00 02 00 00 00 .&apos;..............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000020&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 80 00 00 00 80 00 00 00 14 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000030&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;99 cd 97 67 00 00 ff ff 53 ef 01 00 02 00 00 00 ...g....S.......&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000040&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;98 cd 97 67 00 00 00 00 00 00 00 00 01 00 00 00 ...g............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000050&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 0b 00 00 00 80 00 00 00 20 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000060&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;42 02 00 00 31 00 00 00 de 68 65 bd 85 b5 44 2e B...1....he...D.&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000070&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;88 76 d4 03 1e 65 d8 77 50 49 58 45 4c 4d 4f 44 .v...e.wPIXELMOD&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000080&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;45 4d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 EM..............&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;000090&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000a0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000b0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000c0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000d0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000e0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;00 00 00 00 00 00 00 00 00 00 00 00 f9 e6 31 5d ..............1]&lt;/span&gt;
+&lt;span class=&quot;na&quot;&gt;0000f0&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;d7 34 42 48 83 91 26 38 df 68 da 44 01 00 00 00 .4BH..&amp;amp;8.h.D....&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The magic of an ext4 superblock is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0xEF53&lt;/code&gt;, &lt;a href=&quot;https://docs.kernel.org/filesystems/ext4/globals.html#super-block&quot;&gt;which is at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x38&lt;/code&gt;&lt;/a&gt; [&lt;a href=&quot;#references&quot;&gt;15&lt;/a&gt;] from the start of the superblock. In a normal &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition, the superblock is at offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x400&lt;/code&gt; (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1024&lt;/code&gt; bytes) from the start of the partition. To turn it into a normal mountable &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; partition, we need to move the superblock to offset &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;0x400&lt;/code&gt; and then pad the first &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1024&lt;/code&gt; bytes with zeros.&lt;/p&gt;
+
+&lt;p&gt;Now it can be mounted like a normal &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; image.&lt;/p&gt;
+
+&lt;h1 id=&quot;pixel-9-baseband-updates&quot;&gt;Pixel 9 baseband updates&lt;/h1&gt;
+
+&lt;p&gt;The Google Pixel 9 baseband is a bit different from the previous basebands. So different, in fact, that no reversing scripts currently support it. Not even the CRCs match. Let’s discuss how different it is, shall we?&lt;/p&gt;
+
+&lt;h2 id=&quot;headers&quot;&gt;Headers&lt;/h2&gt;
+
+&lt;p&gt;Here are headers parsed from the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modem.bin&lt;/code&gt; of a Samsung device:&lt;/p&gt;
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;TOC&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x40008000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000410&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;BOOT&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000420&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x40000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00003ab4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x8e5cad14&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;MAIN&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00003ee0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x40010000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x03c76f04&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0xf7e860e4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;VSS&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x03c7ae00&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x4d000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00550494&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x9a90150a&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;NV&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x49a00000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00100000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;OFFSET&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00080000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00080000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;And here are headers parsed from the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio.img&lt;/code&gt; of a Pixel 9 device:&lt;/p&gt;
+&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;TOC&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000410&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;BOOT&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000410&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00021c00&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x037fe779&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;PSP&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00022010&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x12b80000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x0003d210&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x7c4d2a1e&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;MAIN&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x0005f220&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x40010000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x04e4bf78&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x7c93db29&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;APM&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x04eab198&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x02030000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x0000b848&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0xc499f34d&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;VSS&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x04eb69e0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x4f900000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00520214&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0xde39fb73&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;DBGCORE&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x053d6bf4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x11b00000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00001590&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0xfac85104&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;RF_CFG&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x4da00000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00327174&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;NV_NORM&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x4d200000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00080000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;8&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;TocHeaderInfo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&apos;NV_PROT&apos;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;file_offset&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;load_address&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x4d280000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00080000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;crc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0x00000000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;entry_id&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;9&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The Samsung TOC headers are &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;TOC&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;BOOT&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MAIN&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;VSS&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NV&lt;/code&gt;, and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;OFFSET&lt;/code&gt; while the Pixel TOC headers are &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;TOC&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;BOOT&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PSP&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MAIN&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;APM&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;VSS&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;DBGCORE&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;RF_CFG&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NV_NORM&lt;/code&gt;, and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NV_PROT&lt;/code&gt;. The most interesting additions in my opinion are &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;APM&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PSP&lt;/code&gt;, which seem to stand for “Application Processor Module” and “Platform Security Processor”. At this point, though, that’s just a wild guess.&lt;/p&gt;
+
+&lt;p&gt;These additions might or might not be related to the &lt;a href=&quot;https://security.googleblog.com/2024/10/pixel-proactive-security-cellular-modems.html&quot;&gt;recent hardening of the Google Pixel 9 baseband&lt;/a&gt;. [&lt;a href=&quot;#references&quot;&gt;16&lt;/a&gt;]&lt;/p&gt;
+
+&lt;h2 id=&quot;entropy&quot;&gt;Entropy&lt;/h2&gt;
+
+&lt;p&gt;With all of the scripts unable to match any of the known baseband structures, it would make sense to assume that most of the data we’re looking for must be encrypted or compressed in some way, right? Well, that doesn’t seem to be the case at all. A very simple check of the binary entropy debunks that assumption.&lt;/p&gt;
+
+&lt;p&gt;For reference, here is the entropy graph of a Samsung baseband image where the reverse engineering scripts perform reliably:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/reverse-engineering/2025/07/20/samsung_entropy.png&quot; alt=&quot;The entropy of a Samsung baseband image&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;And here is the entropy of a Google Pixel 9 baseband image where reverse engineering strategies are not publicly known:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/images/reverse-engineering/2025/07/20/google_entropy.png&quot; alt=&quot;The entropy of a Google Pixel 9 extracted baseband image&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;It is so surprisingly identical that you have to squint to spot the differences. There is no data hiding or obfuscation going on — it’s just structured differently.&lt;/p&gt;
+
+&lt;h1 id=&quot;closing-note&quot;&gt;Closing note&lt;/h1&gt;
+
+&lt;p&gt;The Pixel 9 baseband is yet another reminder that nothing in this field stays still for long. The documentation is non-existent, the formats keep changing, and the only constant is the time wasted figuring out what broke this time. My new tool is far from well-tested, but it does help get the job done.&lt;/p&gt;
+
+&lt;p&gt;If you’re looking for closure, you won’t find it here — just more questions, and probably a few more CRC mismatches.&lt;/p&gt;
+
+&lt;h1 id=&quot;references&quot;&gt;References&lt;/h1&gt;
+
+&lt;p&gt;[1] &lt;a href=&quot;https://www.youtube.com/watch?v=o280NiZjNu8&quot;&gt;Breaking Band talk&lt;/a&gt;&lt;br /&gt;
+[2] &lt;a href=&quot;https://www.youtube.com/watch?v=6bpxrfB9ioo&quot;&gt;A walk with Shannon talk&lt;/a&gt;&lt;br /&gt;
+[3] &lt;a href=&quot;https://www.youtube.com/watch?v=wkWUU8820ro&quot;&gt;Emulating Samsung’s Baseband for Security Testing talk&lt;/a&gt;&lt;br /&gt;
+[4] &lt;a href=&quot;https://github.com/grant-h/ShannonBaseband/tree/master/reversing/btl&quot;&gt;Reversed BTL format structure&lt;/a&gt;&lt;br /&gt;
+[5] &lt;a href=&quot;https://github.com/grant-h/ShannonBaseband/tree/master/reversing/ghidra&quot;&gt;Grant’s Ghidra reversing scripts and loader&lt;/a&gt;&lt;br /&gt;
+[6] &lt;a href=&quot;https://github.com/marin-m/vmlinux-to-elf&quot;&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;vmlinux-to-elf&lt;/code&gt; source code&lt;/a&gt;&lt;br /&gt;
+[7] &lt;a href=&quot;https://github.com/themmokhtar/radio-to-elf&quot;&gt;My &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;radio-to-elf&lt;/code&gt; source code&lt;/a&gt;&lt;br /&gt;
+[8] &lt;a href=&quot;https://www.youtube.com/watch?v=quw8SnmMWg4&quot;&gt;How to Hack Shannon Baseband (from a Phone) talk&lt;/a&gt;&lt;br /&gt;
+[9] &lt;a href=&quot;https://developer.arm.com/documentation/ddi0419/c/System-Level-Architecture/System-Address-Map/Protected-Memory-System-Architecture--PMSAv6/MPU-Region-Attribute-and-Size-Register--MPU-RASR?lang=en&quot;&gt;ARM developer documentation covering &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MPU_RASR&lt;/code&gt;&lt;/a&gt;&lt;br /&gt;
+[10] &lt;a href=&quot;https://github.com/alexander-pick/shannon_modem_loader/wiki/Extract-Google-Pixel-Modem-Images-%28FBPK---Fastboot-Package-Image-Format%29&quot;&gt;Alexander Pick’s modem extraction guide for older pixel phones&lt;/a&gt;&lt;br /&gt;
+[11] &lt;a href=&quot;https://gitlab.com/CalyxOS/scripts/-/commit/b9def06273d5c68bca195474ce8c59a0ecc396e5&quot;&gt;The CalyxOS version of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;fbpacktool&lt;/code&gt;&lt;/a&gt;&lt;br /&gt;
+[12] &lt;a href=&quot;https://developers.google.com/android/binary_transparency/pixel_verification&quot;&gt;Google’s Android Binary Transparency project (my ass)&lt;/a&gt;&lt;br /&gt;
+[13] &lt;a href=&quot;https://wiki.osdev.org/USTAR&quot;&gt;One &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; file format guide&lt;/a&gt;&lt;br /&gt;
+[14] &lt;a href=&quot;https://www.subspacefield.org/~vax/tar_format.html&quot;&gt;Another &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tar&lt;/code&gt; file format guide&lt;/a&gt;&lt;br /&gt;
+[15] &lt;a href=&quot;https://docs.kernel.org/filesystems/ext4/globals.html#super-block&quot;&gt;Linux kernel &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ext4&lt;/code&gt; superblock structure&lt;/a&gt;&lt;br /&gt;
+[16] &lt;a href=&quot;https://security.googleblog.com/2024/10/pixel-proactive-security-cellular-modems.html&quot;&gt;Recent Google Pixel 9 security hardening&lt;/a&gt;&lt;/p&gt;</content><author><name>themmokhtar</name></author><category term="reverse-engineering" /><category term="android" /><category term="baseband" /><category term="shannon" /><category term="reverse-engineering" /><category term="crashes" /><category term="elf" /><category term="tar" /><category term="ext4" /><category term="fastbootpack" /><summary type="html">This post outlines several Shannon Baseband reverse engineering techniques and explains why reverse engineering this component is especially difficult on the Google Pixel 9.</summary><media:thumbnail xmlns:media="http://search.yahoo.com/mrss/" url="https://themmokhtar.github.io/assets/images/reverse-engineering/2025/07/20/google_entropy.png" /><media:content medium="image" url="https://themmokhtar.github.io/assets/images/reverse-engineering/2025/07/20/google_entropy.png" xmlns:media="http://search.yahoo.com/mrss/" /></entry></feed>
